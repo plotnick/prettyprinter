@@ -5,134 +5,144 @@ class token(object):
     """Base class for prettyprinter tokens."""
     pass
 
-class string(token):
-    def __init__(self, s):
-        self.string = s
-    def __len__(self):
-        return len(self.string)
-
-class linebreak(token):
-    def __init__(self, offset=0, blankspace=1):
-        self.offset = offset
+class newline(token):
+    def __init__(self, mandatory=False, fill=True, blankspace=0, offset=0):
+        self.mandatory = mandatory
+        self.fill = fill
         self.blankspace = blankspace
-
-class discretionary(linebreak):
-    def __init__(self):
-        super(self, discretionary).__init__(blankspace=0)
-
-class newline(linebreak):
-    def __init__(self):
-        super(self, discretionary).__init__(blankspace=9999)
+        self.offset = offset
 
 class begin(token):
-    consistent, inconsistent = range(2)
-
-    def __init__(self, offset=2, breaktype=inconsistent):
+    """Begin a logical block.  If the offset is omitted or is None, use the
+    length of the first string in the block."""
+    def __init__(self, offset=None):
         self.offset = offset
-        self.breaktype = breaktype
 
 class end(token):
+    """End a logical block."""
     pass
 
 class prettyprinter(object):
+    infinity = 999999
+
+    class queuentry(object):
+        def __init__(self, x, l): self.token = x; self.size = l
+        def __len__(self): return self.size
+
     def __init__(self, width=80, file=sys.stdout):
-        self.space = self.margin = int(width); assert self.margin > 0
-        self.file = file; assert file
+        self.margin = int(width); assert self.margin > 0, "negative margin"
+        self.file = file; assert file, "prettyprinting to nowhere"
+        self.space = self.margin
         self.scanstack = deque()
         self.printstack = deque()
-        self.arraysize = 3*self.margin
-        self.stream = [None for i in range(0, self.arraysize)]
-        self.size = [None for i in range(0, self.arraysize)]
+        self.queue = deque()
 
     def __call__(self, toks):
         for x in toks: self.scan(x)
 
     def scan(self, x):
-        assert isinstance(x, token), "non-token instance"
+        def push(x): self.scanstack.append(x)
+        def pop(): return self.scanstack.pop()
+        def top(): return self.scanstack[-1]
+        def popbottom(): return self.scanstack.popleft()
+        def empty(): return len(self.scanstack) == 0
+
+        def enqueue(x, l):
+            q = self.queuentry(x, l);
+            self.queue.append(q);
+            return q
+
+        def flushqueue():
+            """Output as many queue entries as possible."""
+            while len(self.queue) > 0 and self.queue[0].size >= 0:
+                q = self.queue.popleft()
+                (x, l) = (q.token, q.size)
+                self.output(x, l)
+                self.leftotal += x.blankspace if isinstance(x, newline) else l
+
+        def reset():
+            """Reset the size totals and ensure that the queue is empty."""
+            self.leftotal = self.rightotal = 1
+            assert len(self.queue) == 0, "queue should be empty"
+
         if isinstance(x, begin):
-            if len(self.scanstack) == 0:
-                self.leftotal = self.rightotal = 1
-                self.left = self.right = 0
-            else:
-                self.advanceright()
-            self.stream[self.right] = x
-            self.size[self.right] = -self.rightotal
-            self.scanstack.append(self.right)
+            if empty(): reset()
+            push(enqueue(x, -self.rightotal))
         elif isinstance(x, end):
-            if len(self.scanstack) == 0:
-                self.pprint(x, 0)
+            if empty(): self.output(x, 0)
             else:
-                self.advanceright()
-                self.stream[self.right] = x
-                self.size[self.right] = 0
-                y = self.scanstack.pop()
-                self.size[y] += self.rightotal
-                if isinstance(self.stream[y], linebreak) and len(self.scanstack):
-                    z = self.scanstack.pop()
-                    self.size[z] += self.rightotal
-                if len(self.scanstack) == 0:
-                    self.advanceleft(self.stream[self.left], self.size[self.left])
-        elif isinstance(x, linebreak):
-            if len(self.scanstack) == 0:
-                self.rightotal = 1
-                self.left = self.right = 0
+                enqueue(x, 0)
+                q = pop()
+                q.size += self.rightotal
+                if isinstance(q.token, newline) and not empty():
+                    q = pop()
+                    q.size += self.rightotal
+                if empty(): flushqueue()
+        elif isinstance(x, newline):
+            if empty(): reset()
             else:
-                self.advanceright()
-                y = self.scanstack[-1]
-                if isinstance(self.stream[y], linebreak):
-                    self.scanstack.pop()
-                    self.size[y] += self.rightotal
-            self.stream[self.right] = x
-            self.size[self.right] = -self.rightotal
-            self.scanstack.append(self.right)
+                q = top()
+                if isinstance(q.token, newline):
+                    q.size += self.rightotal
+                    pop()
+            push(enqueue(x, -self.rightotal))
             self.rightotal += x.blankspace
-        elif isinstance(x, string):
-            if len(self.scanstack) == 0:
-                self.pprint(x, len(x))
+        elif isinstance(x, basestring):
+            if empty(): self.output(x, len(x))
             else:
-                self.advanceright()
-                self.stream[self.right] = x
-                self.size[self.right] = len(x)
+                t = top().token
+                if isinstance(t, begin) and t.offset is None:
+                    t.offset = len(x)
+
+                enqueue(x, len(x))
                 self.rightotal += len(x)
                 while self.rightotal - self.leftotal > self.space:
-                    self.size[self.scanstack.popleft()] = 999999
-                    self.advanceleft(self.stream[self.left], self.size[self.left])
+                    popbottom().size = self.infinity
+                    flushqueue()
+        else:
+            raise TypeError, "non-token"
 
-    def advanceright(self):
-        self.right = (self.right + 1) % self.arraysize
-        assert self.left < self.right
+    def output(self, x, l):
+        def push(x): self.printstack.append(x)
+        def pop(): return self.printstack.pop()
+        def top(): return self.printstack[-1]
 
-    def advanceleft(self, x, l):
-        if l >= 0:
-            self.pprint(x, l)
-            self.leftotal += x.blankspace if isinstance(x, linebreak) else l
-            if self.left < self.right:
-                self.left = (self.left + 1) % self.arraysize
-                self.advanceleft(self.stream[self.left], self.size[self.left])
-
-    def pprint(self, x, l):
-        def indent(x): self.file.write("\n" + x*" ")
+        def indent(n, newline=False):
+            if newline: self.file.write("\n")
+            self.file.write(n * " ")
 
         if isinstance(x, begin):
-            self.printstack.append(self.space - x.offset if l > self.space else 0)
-        elif isinstance(x, end):
-            self.printstack.pop()
-        elif isinstance(x, linebreak):
-            # So far, inconsistent breaks assumed.
-            if l > self.space:
-                self.space = self.printstack[-1] - x.offset
-                indent(self.margin - self.space)
-            else:
-                self.file.write(x.blankspace*" ")
+            push((self.space - (x.offset or 0), l <= self.space))
+        elif isinstance(x, end): pop()
+        elif isinstance(x, newline):
+            (block_offset, fits) = top()
+            if x.mandatory:
+                self.space = block_offset - x.offset
+                indent(self.margin - self.space, True)
+            elif fits:
+                # Entire block fits; don't break line.
                 self.space -= x.blankspace
-        elif isinstance(x, string):
-            self.file.write(x.string)
+                indent(x.blankspace)
+            elif x.fill:
+                # Fill- or block-style newline.
+                if l > self.space:
+                    self.space = block_offset - x.offset
+                    indent(self.margin - self.space, True)
+            else:
+                # Linear-style newline.
+                self.space = block_offset - x.offset
+                indent(self.margin - self.space, True)
+        elif isinstance(x, basestring):
+            self.file.write(x)
             self.space -= l
 
 if __name__ == "__main__":
-    prettyprinter(15)([begin(),
-                       begin(), string("f(a, b, c, d)"), end(),
-                       linebreak(offset=2), string("+"), linebreak(offset=2),
-                       begin(), string("g(a, b, c, d)"), end(),
+    print
+    prettyprinter(40)([begin(offset=2),
+                       "f(a, b, c, d)",
+                       newline(fill=False), " + ", newline(),
+                       "g(a, b, c, d)",
+                       newline(fill=False), " + ", newline(),
+                       "h(a, b, c, d)",
                        end()])
     print
