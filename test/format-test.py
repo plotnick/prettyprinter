@@ -1,9 +1,12 @@
 import unittest
-from format import format
+from format import format, FormatError
 
 class FormatTest(unittest.TestCase):
-    def formatEquals(self, formatted, control, *args):
-        self.assertEqual(formatted, format(None, control, *args))
+    def formatEquals(self, result, control, *args):
+        self.assertEqual(result, format(None, control, *args))
+
+    def formatRaises(self, exc, control, *args):
+        self.assertRaises(exc, format, None, control, *args)
 
     def testConditional(self):
         self.formatEquals("Zero", "~0[Zero~;One~:;Other~]")
@@ -62,6 +65,8 @@ class FormatTest(unittest.TestCase):
         self.formatEquals("Done.", donestr)
         self.formatEquals("Done. 3 warnings.", donestr, 3)
         self.formatEquals("Done. 1 warning. 5 errors.", donestr, 1, 5)
+
+        self.formatRaises(FormatError, "~D~:^~D", 1, 2, 3)
 
         self.formatEquals("a...b", "~:{~@?~:^...~}", [["a"], ["b"]])
 
