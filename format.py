@@ -1,5 +1,6 @@
 import sys
 import re
+from cStringIO import StringIO
 
 class FormatError(StandardError):
     pass
@@ -65,26 +66,26 @@ class Literal(Directive):
         super(Literal, self).__init__(None, False, False, control, start, end)
         assert end > start
 
-    def __call__(self, args):
-        yield self.control[self.start:self.end]
+    def format(self, stream, args):
+        stream.write(self.control[self.start:self.end])
 
 
 class Newline(Directive):
-    def __call__(self, args):
-        yield "\n" * self.param(0, args, 1)
+    def format(self, stream, args):
+        stream.write("\n" * self.param(0, args, 1))
 
 class FreshLine(Directive):
-    def __call__(self, args):
-        yield "~" * self.param(0, args, 1)
+    def format(self, stream, args):
+        stream.write("~" * self.param(0, args, 1))
 
 class Tilde(Directive):
-    def __call__(self, args):
-        yield "~" * self.param(0, args, 1)
+    def format(self, stream, args):
+        stream.write("~" * self.param(0, args, 1))
 
 class Aesthetic(Directive):
     colon_allowed = atsign_allowed = True
 
-    def __call__(self, args):
+    def format(self, stream, args):
         mincol = self.param(0, args, 0)
         colinc = self.param(1, args, 1)
         minpad = self.param(2, args, 0)
@@ -96,28 +97,28 @@ class Aesthetic(Directive):
 
         a = args.next()
         s = "[]" if self.colon and a is None else str(a)
-        yield s.rjust(mincol, padchar) if self.atsign \
-            else s.ljust(mincol, padchar)
+        stream.write(s.rjust(mincol, padchar) if self.atsign else \
+                     s.ljust(mincol, padchar))
 
 class Representation(Directive):
     colon_allowed = atsign_allowed = True
 
-    def __call__(self, args):
-        yield repr(args.next())
+    def format(self, stream, args):
+        stream.write(repr(args.next()))
 
 class Decimal(Directive):
     colon_allowed = atsign_allowed = True
 
-    def __call__(self, args):
-        yield "%d" % args.next()
+    def format(self, stream, args):
+        stream.write("%d" % args.next())
 
 class Plural(Directive):
     colon_allowed = atsign_allowed = True
 
-    def __call__(self, args):
+    def format(self, stream, args):
         if self.colon: args.prev()
-        yield ("y" if args.next() == 1 else "ies") if self.atsign \
-              else ("" if args.next() == 1 else "s")
+        stream.write(("y" if args.next() == 1 else "ies") if self.atsign else \
+                     ("" if args.next() == 1 else "s"))
 
 class Separator(Directive):
     colon_allowed = True
@@ -125,7 +126,7 @@ class Separator(Directive):
 class Escape(Directive):
     colon_allowed = True
 
-    def __call__(self, args):
+    def format(self, stream, args):
         if self.colon and not args.outer:
             raise FormatError, "attempt to use ~:^ outside a ~:{...~} construct"
 
@@ -135,12 +136,11 @@ class Escape(Directive):
            (param1 is not None and param1 == 0) or \
            ((args.outer if self.colon else args).remaining() == 0):
             raise UpAndOut, self
-        yield
 
 class Goto(Directive):
     colon_allowed = atsign_allowed = True
 
-    def __call__(self, args):
+    def format(self, stream, args):
         if self.atsign:
             n = self.param(0, args, 0)
             if n >= 0 and n < len(args): args.goto(n)
@@ -149,7 +149,6 @@ class Goto(Directive):
             for i in range(self.param(0, args, 1)):
                 if self.colon: args.prev()
                 else: args.next()
-        yield
 
 class DelimitedDirective(Directive):
     """Delimited directives, such as conditional expressions and
@@ -185,16 +184,14 @@ class Conditional(DelimitedDirective):
     colon_allowed = atsign_allowed = True
     delimiter = EndConditional
 
-    def __call__(self, args):
+    def format(self, stream, args):
         if self.colon:
             # "~:[ALTERNATIVE~;CONSEQUENT~] selects the ALTERNATIVE control
             # string if arg is false, and selects the CONSEQUENT control
             # string otherwise."
             if len(self.clauses) != 2:
                 raise FormatError, "must specify exactly two sections"
-            for x in apply_directives(self.clauses[1 if args.next() else 0],
-                                      args):
-                yield x
+            apply_directives(self.clauses[1 if args.next() else 0], stream, args)
         elif self.atsign:
             # "~@[CONSEQUENT~] tests the argument.  If it is true, then
             # the argument is not used up by the ~[ command but remains
@@ -204,20 +201,20 @@ class Conditional(DelimitedDirective):
             if len(self.clauses) != 1:
                 raise FormatError, "can only specify one section"
             if args.peek():
-                for x in apply_directives(self.clauses[0], args): yield x
-            else: args.next()
+                apply_directives(self.clauses[0], stream, args)
+            else:
+                args.next()
         else:
             try:
                 n = self.param(0, args)
                 if n is None: n = args.next()
-                for x in apply_directives(self.clauses[n], args): yield x
+                apply_directives(self.clauses[n], stream, args)
             except IndexError:
                 if self.separators[-1].colon:
                     # "If the last ~; used to separate clauses is ~:;
                     # instead, then the last clause is an 'else' clause
                     # that is performed if no other clause is selected."
-                    for x in apply_directives(self.clauses[-1], args): yield x
-                else: yield
+                    apply_directives(self.clauses[-1], stream, args)
 
 class EndIteration(Directive):
     colon_allowed = True
@@ -226,7 +223,7 @@ class Iteration(DelimitedDirective):
     colon_allowed = atsign_allowed = True
     delimiter = EndIteration
 
-    def __call__(self, args):
+    def format(self, stream, args):
         max = self.param(0, args, -1)
         body = self.clauses[0] or [x for x in parse_control_string(args.next())]
 
@@ -239,8 +236,7 @@ class Iteration(DelimitedDirective):
             if i == max: break
             i += 1
             try:
-                for x in apply_directives(body, inner(outer)):
-                    yield x
+                apply_directives(body, stream, inner(outer))
             except UpAndOut, e:
                 if e.args[0].colon: break
                 else: continue
@@ -248,11 +244,10 @@ class Iteration(DelimitedDirective):
 class Recursive(Directive):
     atsign_allowed = True
 
-    def __call__(self, args):
-        for x in apply_directives(parse_control_string(args.next()),
-                                  args if self.atsign \
-                                       else Arguments(args.next())):
-            yield x
+    def format(self, stream, args):
+        apply_directives(parse_control_string(args.next()),
+                         stream,
+                         args if self.atsign else Arguments(args.next()))
 
 directives = {
     "%": Newline, "&": FreshLine, "~": Tilde,
@@ -315,24 +310,20 @@ def parse_control_string(control, start=0, delimiter=None):
                     "unknown format directive " + control[tilde:i+1].upper()
         start = i
 
-def apply_directives(directives, args):
+def apply_directives(directives, stream, args):
     for d in directives:
-        for x in d(args):
-            if x is not None:
-                yield x
+        d.format(stream, args)
 
 def format(destination, control, *args):
-    def do_format(control, args):
-        try:
-            for x in apply_directives((d for d in parse_control_string(control)),
-                                      Arguments(args)):
-                yield x
-        except UpAndOut:
-            return
-
     if destination is None:
-        return "".join(x for x in do_format(control, args))
-    else:
-        if destination is True: destination = sys.stdout
-        for x in do_format(control, args):
-            destination.write(x)
+        stream = StringIO()
+    elif destination is True:
+        stream = sys.stdout
+    try:
+        apply_directives(parse_control_string(control), stream, Arguments(args))
+    except UpAndOut:
+        pass
+    if destination is None:
+        str = stream.getvalue()
+        stream.close()
+        return str
