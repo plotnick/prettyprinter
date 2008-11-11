@@ -39,6 +39,9 @@ class prettyprinter(object):
 
     def __call__(self, toks):
         for x in toks: self.scan(x)
+        assert len(self.queue) == 0, "leftover items in output queue"
+        assert len(self.scanstack) == 0, "leftover itmes on scan stack"
+        assert len(self.printstack) == 0, "leftover items on print stack"
 
     def scan(self, x):
         def push(x): self.scanstack.append(x)
