@@ -1,6 +1,9 @@
+from __future__ import with_statement
+
 import sys
 import re
 from cStringIO import StringIO
+from prettyprinter import *
 
 class FormatError(StandardError):
     pass
@@ -10,7 +13,7 @@ class UpAndOut(Exception):
 
 class Arguments(object):
     def __init__(self, args, outer=None):
-        self.args = args
+        self.args = [arg for arg in args]
         self.cur = 0
         self.outer = outer
 
@@ -67,8 +70,7 @@ class Literal(Directive):
         assert end > start
 
     def format(self, stream, args):
-        stream.write(self.control[self.start:self.end])
-
+        stream.write(str(self))
 
 class Newline(Directive):
     def format(self, stream, args):
@@ -177,6 +179,55 @@ class DelimitedDirective(Directive):
             self.clauses[len(self.separators)].append(x)
         self.end = x.end
 
+class ConditionalNewline(Directive):
+    colon_allowed = atsign_allowed = True
+
+    def format(self, stream, args):
+        stream.newline(mandatory=(self.colon and self.atsign), fill=self.colon)
+
+class EndJustification(Directive):
+    colon_allowed = True
+
+class Justification(DelimitedDirective):
+    """This class actually implements two essentially unrelated format
+    directives: justification (~<...~>) and pprint-logical-block (~<...~:>).
+    Blame Dick Waters."""
+
+    colon_allowed = atsign_allowed = True
+    delimiter = EndJustification
+
+    def format(self, stream, args):
+        if self.delimiter.colon:
+            # pprint-logical-block
+            if not isinstance(stream, PrettyPrinter):
+                stream = PrettyPrinter(file=stream)
+
+            # Note: with the colon modifier, the prefix & suffix default to
+            # square, not round brackets; this is Python, not Lisp.
+            prefix = "[" if self.colon else ""
+            suffix = "]" if self.colon else ""
+            if len(self.clauses) == 0:
+                body = []
+            elif len(self.clauses) == 1:
+                (body,) = self.clauses
+            elif len(self.clauses) == 2:
+                ((prefix,), body) = self.clauses
+            elif len(self.clauses) == 3:
+                ((prefix,), body, (suffix,)) = self.clauses
+            else:
+                raise FormatError, "too many segments for ~<...~:>"
+
+            list = [x for x in args] if self.atsign else args.next()
+            with stream.logical_block(list, offset=0,
+                                      prefix=str(prefix),
+                                      suffix=str(suffix)) as l:
+                try:
+                    apply_directives(body, stream, Arguments(l))
+                except UpAndOut:
+                    pass
+        else:
+            raise FormatError, "justification not yet implemented"
+
 class EndConditional(Directive):
     pass
 
@@ -254,6 +305,8 @@ directives = {
     "A": Aesthetic, "R": Representation, "S": Representation,
     "D": Decimal,
     "*": Goto,
+    "_": ConditionalNewline,
+    "<": Justification, ">": EndJustification,
     "[": Conditional, "]": EndConditional,
     "{": Iteration, "}": EndIteration,
     "?": Recursive,
@@ -319,6 +372,8 @@ def format(destination, control, *args):
         stream = StringIO()
     elif destination is True:
         stream = sys.stdout
+    else:
+        stream = destination
     try:
         apply_directives(parse_control_string(control), stream, Arguments(args))
     except UpAndOut:
