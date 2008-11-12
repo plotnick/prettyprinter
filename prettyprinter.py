@@ -18,12 +18,15 @@ class Begin(Token):
     """Begin a logical block.  If the offset is omitted or is None, use the
     length of the first string in the block."""
 
-    def __init__(self, offset=None):
+    def __init__(self, offset=None, prefix=None):
         self.offset = offset
+        self.prefix = prefix
 
 class End(Token):
     """End a logical block."""
-    pass
+
+    def __init__(self, suffix=None):
+        self.suffix = suffix
 
 class LogicalBlock(object):
     """A context manager for logical blocks."""
@@ -31,6 +34,7 @@ class LogicalBlock(object):
     def __init__(self, pp, list, *args, **kwargs):
         self.pp = pp
         self.list = list
+        self.suffix = kwargs.pop("suffix", None)
         self.args = args
         self.kwargs = kwargs
 
@@ -40,7 +44,7 @@ class LogicalBlock(object):
         return self
 
     def __exit__(self, type, value, traceback):
-        self.pp.end()
+        self.pp.end(suffix=self.suffix)
         if type is StopIteration:
             return True
 
@@ -168,8 +172,11 @@ class PrettyPrinter(object):
             self.file.write(n * " ")
 
         if isinstance(x, Begin):
+            if x.prefix: self._output(x.prefix, len(x.prefix))
             push((self.space - (x.offset or 0), l <= self.space))
-        elif isinstance(x, End): pop()
+        elif isinstance(x, End):
+            if x.suffix: self._output(x.suffix, len(x.suffix))
+            pop()
         elif isinstance(x, Newline):
             (block_offset, fits) = top()
             if x.mandatory:
