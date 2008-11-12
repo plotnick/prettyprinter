@@ -1,33 +1,69 @@
 import sys
 from collections import deque
 
-class token(object):
+__all__ = ["PrettyPrinter"]
+
+class Token(object):
     """Base class for prettyprinter tokens."""
     pass
 
-class newline(token):
-    def __init__(self, mandatory=False, fill=True, blankspace=0, offset=0):
+class Newline(Token):
+    def __init__(self, mandatory=False, fill=False, blankspace=0, offset=0):
         self.mandatory = mandatory
         self.fill = fill
         self.blankspace = blankspace
         self.offset = offset
 
-class begin(token):
+class Begin(Token):
     """Begin a logical block.  If the offset is omitted or is None, use the
     length of the first string in the block."""
+
     def __init__(self, offset=None):
         self.offset = offset
 
-class end(token):
+class End(Token):
     """End a logical block."""
     pass
 
-class prettyprinter(object):
-    infinity = 999999
+class LogicalBlock(object):
+    """A context manager for logical blocks."""
 
-    class queuentry(object):
-        def __init__(self, x, l): self.token = x; self.size = l
-        def __len__(self): return self.size
+    def __init__(self, pp, list, *args, **kwargs):
+        self.pp = pp
+        self.list = list
+        self.args = args
+        self.kwargs = kwargs
+
+    def __enter__(self):
+        self.pp.begin(*self.args, **self.kwargs)
+        self.index = 0
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.pp.end()
+        if type is StopIteration:
+            return True
+
+    def __iter__(self):
+        return self
+
+    def next(self):
+        if self.index == len(self.list):
+            raise StopIteration
+        value = self.list[self.index]
+        self.index += 1
+        return value
+
+    def exit_if_list_exhausted(self):
+        if self.index == len(self.list):
+            raise StopIteration
+
+class QueueEntry(object):
+    def __init__(self, x, l): self.token = x; self.size = l
+    def __len__(self): return self.size
+
+class PrettyPrinter(object):
+    infinity = 999999
 
     def __init__(self, width=80, file=sys.stdout):
         self.margin = int(width); assert self.margin > 0, "negative margin"
@@ -36,14 +72,31 @@ class prettyprinter(object):
         self.scanstack = deque()
         self.printstack = deque()
         self.queue = deque()
+        self.closed = False
 
-    def __call__(self, toks):
-        for x in toks: self.scan(x)
-        assert len(self.queue) == 0, "leftover items in output queue"
-        assert len(self.scanstack) == 0, "leftover itmes on scan stack"
-        assert len(self.printstack) == 0, "leftover items on print stack"
+    def write(self, str):
+        self._scan(str)
 
-    def scan(self, x):
+    def newline(self, *args, **kwargs):
+        self._scan(Newline(*args, **kwargs))
+
+    def begin(self, *args, **kwargs):
+        self._scan(Begin(*args, **kwargs))
+
+    def end(self, *args, **kwargs):
+        self._scan(End(*args, **kwargs))
+
+    def logical_block(self, list=None, *args, **kwargs):
+        return LogicalBlock(self, list, *args, **kwargs)
+
+    def close(self):
+        if not self.closed:
+            assert len(self.queue) == 0, "leftover items in output queue"
+            assert len(self.scanstack) == 0, "leftover itmes on scan stack"
+            assert len(self.printstack) == 0, "leftover items on print stack"
+            self.closed = True
+
+    def _scan(self, x):
         def push(x): self.scanstack.append(x)
         def pop(): return self.scanstack.pop()
         def top(): return self.scanstack[-1]
@@ -51,7 +104,7 @@ class prettyprinter(object):
         def empty(): return len(self.scanstack) == 0
 
         def enqueue(x, l):
-            q = self.queuentry(x, l);
+            q = QueueEntry(x, l);
             self.queue.append(q);
             return q
 
@@ -60,41 +113,41 @@ class prettyprinter(object):
             while len(self.queue) > 0 and self.queue[0].size >= 0:
                 q = self.queue.popleft()
                 (x, l) = (q.token, q.size)
-                self.output(x, l)
-                self.leftotal += x.blankspace if isinstance(x, newline) else l
+                self._output(x, l)
+                self.leftotal += x.blankspace if isinstance(x, Newline) else l
 
         def reset():
             """Reset the size totals and ensure that the queue is empty."""
             self.leftotal = self.rightotal = 1
             assert len(self.queue) == 0, "queue should be empty"
 
-        if isinstance(x, begin):
+        if isinstance(x, Begin):
             if empty(): reset()
             push(enqueue(x, -self.rightotal))
-        elif isinstance(x, end):
-            if empty(): self.output(x, 0)
+        elif isinstance(x, End):
+            if empty(): self._output(x, 0)
             else:
                 enqueue(x, 0)
                 q = pop()
                 q.size += self.rightotal
-                if isinstance(q.token, newline) and not empty():
+                if isinstance(q.token, Newline) and not empty():
                     q = pop()
                     q.size += self.rightotal
                 if empty(): flushqueue()
-        elif isinstance(x, newline):
+        elif isinstance(x, Newline):
             if empty(): reset()
             else:
                 q = top()
-                if isinstance(q.token, newline):
+                if isinstance(q.token, Newline):
                     q.size += self.rightotal
                     pop()
             push(enqueue(x, -self.rightotal))
             self.rightotal += x.blankspace
         elif isinstance(x, basestring):
-            if empty(): self.output(x, len(x))
+            if empty(): self._output(x, len(x))
             else:
                 t = top().token
-                if isinstance(t, begin) and t.offset is None:
+                if isinstance(t, Begin) and t.offset is None:
                     t.offset = len(x)
 
                 enqueue(x, len(x))
@@ -105,7 +158,7 @@ class prettyprinter(object):
         else:
             raise TypeError, "non-token"
 
-    def output(self, x, l):
+    def _output(self, x, l):
         def push(x): self.printstack.append(x)
         def pop(): return self.printstack.pop()
         def top(): return self.printstack[-1]
@@ -114,10 +167,10 @@ class prettyprinter(object):
             if newline: self.file.write("\n")
             self.file.write(n * " ")
 
-        if isinstance(x, begin):
+        if isinstance(x, Begin):
             push((self.space - (x.offset or 0), l <= self.space))
-        elif isinstance(x, end): pop()
-        elif isinstance(x, newline):
+        elif isinstance(x, End): pop()
+        elif isinstance(x, Newline):
             (block_offset, fits) = top()
             if x.mandatory:
                 self.space = block_offset - x.offset
@@ -138,14 +191,3 @@ class prettyprinter(object):
         elif isinstance(x, basestring):
             self.file.write(x)
             self.space -= l
-
-if __name__ == "__main__":
-    print
-    prettyprinter(40)([begin(offset=2),
-                       "f(a, b, c, d)",
-                       newline(fill=False), " + ", newline(),
-                       "g(a, b, c, d)",
-                       newline(fill=False), " + ", newline(),
-                       "h(a, b, c, d)",
-                       end()])
-    print
