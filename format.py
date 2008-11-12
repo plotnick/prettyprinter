@@ -39,12 +39,12 @@ class Directive(object):
     def __init__(self, params, colon, atsign, control, start, end):
         if colon and not self.colon_allowed and \
                 atsign and not self.atsign_allowed:
-            raise FormatError, \
-                "neither colon nor atsign allowed for this directive"
+            raise FormatError("neither colon nor atsign allowed "
+                              "for this directive")
         elif colon and not self.colon_allowed:
-            raise FormatError, "colon not allowed for this directive"
+            raise FormatError("colon not allowed for this directive")
         elif atsign and not self.atsign_allowed:
-            raise FormatError, "atsign not allowed for this directive"
+            raise FormatError("atsign not allowed for this directive")
 
         self.params = params; self.colon = colon; self.atsign = atsign
         self.control = control; self.start = start; self.end = end
@@ -94,8 +94,8 @@ class Aesthetic(Directive):
         padchar = self.param(3, args, " ")
 
         # The string methods l/rjust don't support a colinc or minpad.
-        if colinc != 1: raise FormatError, "colinc parameter must be 1"
-        if minpad != 0: raise FormatError, "minpad parameter must be 0"
+        if colinc != 1: raise FormatError("colinc parameter must be 1")
+        if minpad != 0: raise FormatError("minpad parameter must be 0")
 
         a = args.next()
         s = "[]" if self.colon and a is None else str(a)
@@ -130,14 +130,14 @@ class Escape(Directive):
 
     def format(self, stream, args):
         if self.colon and not args.outer:
-            raise FormatError, "attempt to use ~:^ outside a ~:{...~} construct"
+            raise FormatError("attempt to use ~:^ outside a ~:{...~} construct")
 
         (param1, param2, param3) = (self.param(i, args) for i in range(3))
         if (param3 is not None and param1 <= param2 and param2 <= param3) or \
            (param2 is not None and param1 == param2) or \
            (param1 is not None and param1 == 0) or \
            ((args.outer if self.colon else args).remaining() == 0):
-            raise UpAndOut, self
+            raise UpAndOut(self)
 
 class Goto(Directive):
     colon_allowed = atsign_allowed = True
@@ -146,7 +146,7 @@ class Goto(Directive):
         if self.atsign:
             n = self.param(0, args, 0)
             if n >= 0 and n < len(args): args.goto(n)
-            else: raise FormatError, "Index %d is out of bounds." % n
+            else: raise FormatError("Index %d is out of bounds." % n)
         else:
             for i in range(self.param(0, args, 1)):
                 if self.colon: args.prev()
@@ -215,7 +215,7 @@ class Justification(DelimitedDirective):
             elif len(self.clauses) == 3:
                 ((prefix,), body, (suffix,)) = self.clauses
             else:
-                raise FormatError, "too many segments for ~<...~:>"
+                raise FormatError("too many segments for ~<...~:>")
 
             list = [x for x in args] if self.atsign else args.next()
             with stream.logical_block(list, offset=0,
@@ -226,7 +226,7 @@ class Justification(DelimitedDirective):
                 except UpAndOut:
                     pass
         else:
-            raise FormatError, "justification not yet implemented"
+            raise FormatError("justification not yet implemented")
 
 class EndConditional(Directive):
     pass
@@ -241,7 +241,7 @@ class Conditional(DelimitedDirective):
             # string if arg is false, and selects the CONSEQUENT control
             # string otherwise."
             if len(self.clauses) != 2:
-                raise FormatError, "must specify exactly two sections"
+                raise FormatError("must specify exactly two sections")
             apply_directives(self.clauses[1 if args.next() else 0], stream, args)
         elif self.atsign:
             # "~@[CONSEQUENT~] tests the argument.  If it is true, then
@@ -250,7 +250,7 @@ class Conditional(DelimitedDirective):
             # CONSEQUENT is processed.  If the arg is false, then the
             # argument is used up, and the clause is not processed."
             if len(self.clauses) != 1:
-                raise FormatError, "can only specify one section"
+                raise FormatError("can only specify one section")
             if args.peek():
                 apply_directives(self.clauses[0], stream, args)
             else:
@@ -343,10 +343,10 @@ def parse_control_string(control, start=0, delimiter=None):
         colon = atsign = False
         while True:
             if control[i] == ":":
-                if colon: raise FormatError, "too many colons"
+                if colon: raise FormatError("too many colons")
                 colon = True; i += 1
             elif control[i] == "@":
-                if atsign: raise FormatError, "too many atsigns"
+                if atsign: raise FormatError("too many atsigns")
                 atsign = True; i += 1
             elif control[i].upper() in directives.keys():
                 d = directives[control[i].upper()](params, colon, atsign,
@@ -359,8 +359,8 @@ def parse_control_string(control, start=0, delimiter=None):
                 if delimiter and isinstance(d, delimiter): return
                 else: break
             else:
-                raise FormatError, \
-                    "unknown format directive " + control[tilde:i+1].upper()
+                raise FormatError("unknown format directive " + \
+                                      control[tilde:i+1].upper())
         start = i
 
 def apply_directives(directives, stream, args):
