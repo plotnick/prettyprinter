@@ -112,7 +112,15 @@ class Decimal(Directive):
     colon_allowed = atsign_allowed = True
 
     def format(self, stream, args):
-        stream.write("%d" % args.next())
+        mincol = self.param(0, args, 0)
+        padchar = self.param(1, args, " ")
+        commachar = self.param(2, args, ",")
+        comma_interval = self.param(3, args, "3")
+
+        if self.colon: raise FormatError("commas not yet supported")
+
+        s = ("%+d" if self.atsign else "%d") % args.next()
+        stream.write(s.rjust(mincol, padchar))
 
 class Plural(Directive):
     colon_allowed = atsign_allowed = True
