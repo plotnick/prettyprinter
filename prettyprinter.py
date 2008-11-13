@@ -31,9 +31,14 @@ class End(Token):
 class LogicalBlock(object):
     """A context manager for logical blocks."""
 
-    def __init__(self, pp, list, *args, **kwargs):
+    def __init__(self, pp, lst, *args, **kwargs):
+        if not isinstance(pp, PrettyPrinter):
+            raise TypeError("not a pretty-printer")
+        elif not (lst is None or isinstance(lst, (list, tuple))):
+            raise TypeError("invalid logical block list")
+
         self.pp = pp
-        self.list = list
+        self.list = lst
         self.suffix = kwargs.pop("suffix", None)
         self.args = args
         self.kwargs = kwargs
@@ -52,14 +57,14 @@ class LogicalBlock(object):
         return self
 
     def next(self):
-        if self.index == len(self.list):
+        if self.list is None or self.index == len(self.list):
             raise StopIteration
         value = self.list[self.index]
         self.index += 1
         return value
 
     def exit_if_list_exhausted(self):
-        if self.index == len(self.list):
+        if self.list is None or self.index == len(self.list):
             raise StopIteration
 
 class QueueEntry(object):
@@ -70,8 +75,12 @@ class PrettyPrinter(object):
     infinity = 999999
 
     def __init__(self, width=80, file=sys.stdout):
-        self.margin = int(width); assert self.margin > 0, "negative margin"
-        self.file = file; assert file, "prettyprinting to nowhere"
+        self.margin = int(width)
+        if self.margin <= 0:
+            raise ValueError("margin must be positive")
+        if not file:
+            raise RuntimeError("prettyprinting to nowhere")
+        self.file = file
         self.space = self.margin
         self.scanstack = deque()
         self.printstack = deque()
