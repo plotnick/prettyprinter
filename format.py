@@ -108,19 +108,46 @@ class Representation(Directive):
     def format(self, stream, args):
         stream.write(repr(args.next()))
 
-class Decimal(Directive):
+class Numeric(Directive):
+    """Base class for decimal, binary, octal, and hex conversion directives."""
+
     colon_allowed = atsign_allowed = True
 
     def format(self, stream, args):
+        def commify(s, commachar, comma_interval):
+            """Add commachars between groups of comma_interval digits."""
+            first = len(s) % comma_interval
+            a = [s[0:first]] if first > 0 else []
+            for i in range(first, len(s), comma_interval):
+                a.append(s[i:i + comma_interval])
+            return commachar.join(a)
+
         mincol = self.param(0, args, 0)
         padchar = self.param(1, args, " ")
         commachar = self.param(2, args, ",")
-        comma_interval = self.param(3, args, "3")
+        comma_interval = int(self.param(3, args, 3))
 
-        if self.colon: raise FormatError("commas not yet supported")
-
-        s = ("%+d" if self.atsign else "%d") % args.next()
+        n = args.next()
+        s = self.convert(n)
+        if self.colon: s = commify(s, commachar, comma_interval)
+        if self.atsign: s = ("+" if n >= 0 else "-") + s
         stream.write(s.rjust(mincol, padchar))
+
+class Decimal(Numeric):
+    def convert(self, n): return "%d" % n
+
+class Binary(Numeric):
+    octal_digits = ("000", "001", "010", "011", "100", "101", "110", "111")
+
+    def convert(self, n):
+        return "".join(self.octal_digits[int(digit)] \
+                           for digit in "%o" % n).lstrip("0")
+
+class Octal(Numeric):
+    def convert(self, n): return "%o" % n
+
+class Hexadecimal(Numeric):
+    def convert(self, n): return "%x" % n
 
 class Plural(Directive):
     colon_allowed = atsign_allowed = True
@@ -311,7 +338,7 @@ class Recursive(Directive):
 directives = {
     "%": Newline, "&": FreshLine, "~": Tilde,
     "A": Aesthetic, "R": Representation, "S": Representation,
-    "D": Decimal,
+    "D": Decimal, "B": Binary, "O": Octal, "X": Hexadecimal,
     "*": Goto,
     "_": ConditionalNewline,
     "<": Justification, ">": EndJustification,
