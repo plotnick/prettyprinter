@@ -114,7 +114,9 @@ class Numeric(Directive):
     colon_allowed = atsign_allowed = True
 
     def format(self, stream, args):
-        def commify(s, commachar, comma_interval):
+        def abs(n):
+            return n if n > 0 else -n
+        def commafy(s, commachar, comma_interval):
             """Add commachars between groups of comma_interval digits."""
             first = len(s) % comma_interval
             a = [s[0:first]] if first > 0 else []
@@ -122,16 +124,37 @@ class Numeric(Directive):
                 a.append(s[i:i + comma_interval])
             return commachar.join(a)
 
-        mincol = self.param(0, args, 0)
-        padchar = self.param(1, args, " ")
-        commachar = self.param(2, args, ",")
+        mincol = int(self.param(0, args, 0))
+        padchar = str(self.param(1, args, " "))
+        commachar = str(self.param(2, args, ","))
         comma_interval = int(self.param(3, args, 3))
 
         n = args.next()
-        s = self.convert(n)
-        if self.colon: s = commify(s, commachar, comma_interval)
-        if self.atsign: s = ("+" if n >= 0 else "-") + s
-        stream.write(s.rjust(mincol, padchar))
+        s = self.convert(abs(n))
+        sign = ("+" if n >= 0 else "-") if self.atsign else \
+               ("-" if n < 0 else "")
+        if self.colon:
+            if padchar == "0" and mincol > len(s) + len(sign):
+                # We pad with zeros first so that they can be commafied,
+                # too (cf. CLiki Issue FORMAT-RADIX-COMMACHAR).  But in
+                # order to figure out how many to add, we need to solve a
+                # little constraint problem.
+                def col(n):
+                    return n + (n-1)/comma_interval + len(sign)
+                width = -1
+                for i in range(len(s), mincol):
+                    if col(i) == mincol: width = i; break       # exact fit
+                    elif col(i) > mincol: width = i - 1; break  # too big
+                assert width > 0, "couldn't find a width"
+                s = s.rjust(width, padchar)
+
+                # If we're printing a sign, and the width that we chose
+                # above is a multiple of comma_interval, we'll need (at
+                # most one) extra space to get up to mincol.
+                padchar = " "
+
+            s = commafy(s, commachar, comma_interval)
+        stream.write((sign + s).rjust(mincol, padchar))
 
 class Decimal(Numeric):
     def convert(self, n): return "%d" % n

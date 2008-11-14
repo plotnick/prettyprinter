@@ -8,6 +8,14 @@ class FormatTest(unittest.TestCase):
     def formatRaises(self, exc, control, *args):
         self.assertRaises(exc, format, None, control, *args)
 
+    def testRadix(self):
+        self.formatEquals("1101", "~,,' ,4:B", 13)
+        self.formatEquals("1 0001", "~,,' ,4:B", 17)
+        self.formatEquals("0000 1101 0000 0101", "~19,0,' ,4:B", 3333)
+        self.formatEquals("-000 1101 0000 0101", "~19,0,' ,4:B", -3333)
+        #self.formatEquals("1 22", "~3,,,' ,2:R", 17)
+        self.formatEquals("6|55|35", "~,,'|,2:D", 0xFFFF)
+
     def testConditional(self):
         self.formatEquals("Zero", "~0[Zero~;One~:;Other~]")
         self.formatEquals("One", "~1[Zero~;One~:;Other~]")
