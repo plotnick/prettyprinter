@@ -116,6 +116,7 @@ class Numeric(Directive):
     def format(self, stream, args):
         def abs(n):
             return n if n > 0 else -n
+
         def commafy(s, commachar, comma_interval):
             """Add commachars between groups of comma_interval digits."""
             first = len(s) % comma_interval
@@ -143,8 +144,14 @@ class Numeric(Directive):
                     return n + (n-1)/comma_interval + len(sign)
                 width = -1
                 for i in range(len(s), mincol):
-                    if col(i) == mincol: width = i; break       # exact fit
-                    elif col(i) > mincol: width = i - 1; break  # too big
+                    if col(i) == mincol:
+                        # exact fit
+                        width = i
+                        break
+                    elif col(i) > mincol:
+                        # too big
+                        width = i - 1
+                        break
                 assert width > 0, "couldn't find a width"
                 s = s.rjust(width, padchar)
 
@@ -157,7 +164,8 @@ class Numeric(Directive):
         stream.write((sign + s).rjust(mincol, padchar))
 
 class Decimal(Numeric):
-    def convert(self, n): return "%d" % n
+    def convert(self, n):
+        return "%d" % n
 
 class Binary(Numeric):
     octal_digits = ("000", "001", "010", "011", "100", "101", "110", "111")
@@ -167,10 +175,12 @@ class Binary(Numeric):
                            for digit in "%o" % n).lstrip("0")
 
 class Octal(Numeric):
-    def convert(self, n): return "%o" % n
+    def convert(self, n):
+        return "%o" % n
 
 class Hexadecimal(Numeric):
-    def convert(self, n): return "%x" % n
+    def convert(self, n):
+        return "%x" % n
 
 class Plural(Directive):
     colon_allowed = atsign_allowed = True
