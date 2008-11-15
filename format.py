@@ -108,6 +108,28 @@ class Representation(Directive):
     def format(self, stream, args):
         stream.write(repr(args.next()))
 
+class Write(Directive):
+    colon_allowed = atsign_allowed = True
+
+    def format(self, stream, args):
+        x = args.next()
+        if isinstance(stream, PrettyPrinter):
+            if isinstance(x, list):
+                format(stream, "~:<~@{~W~^, ~:_~}~:>", x)
+            elif isinstance(x, tuple):
+                format(stream, "~<(~;~W,~^ ~:_~@{~W~^, ~:_~}~;)~:>", x)
+            elif isinstance(x, (set, frozenset)):
+                format(stream, "~A~<([~;~@{~W~^, ~:_~}~;])~:>",
+                       type(x).__name__, list(x))
+            elif isinstance(x, dict):
+                format(stream, "~<{~;~:@{~W: ~W~:^, ~:_~}~;}~:>", x.items())
+            elif hasattr(x, "__pprint__"):
+                x.__pprint__(stream)
+            else:
+                stream.write(repr(x))
+        else:
+            stream.write(repr(x))
+
 class Numeric(Directive):
     """Base class for decimal, binary, octal, and hex conversion directives."""
 
@@ -370,7 +392,7 @@ class Recursive(Directive):
 
 directives = {
     "%": Newline, "&": FreshLine, "~": Tilde,
-    "A": Aesthetic, "R": Representation, "S": Representation,
+    "A": Aesthetic, "R": Representation, "S": Representation, "W": Write,
     "D": Decimal, "B": Binary, "O": Octal, "X": Hexadecimal,
     "*": Goto,
     "_": ConditionalNewline,
