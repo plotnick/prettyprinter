@@ -3,7 +3,9 @@ from __future__ import with_statement
 import sys
 import re
 from cStringIO import StringIO
-from prettyprinter import *
+from prettyprinter import PrettyPrinter
+
+__all__ = ["format"]
 
 class FormatError(StandardError):
     pass
@@ -112,23 +114,11 @@ class Write(Directive):
     colon_allowed = atsign_allowed = True
 
     def format(self, stream, args):
-        x = args.next()
+        arg = args.next()
         if isinstance(stream, PrettyPrinter):
-            if isinstance(x, list):
-                format(stream, "~:<~@{~W~^, ~:_~}~:>", x)
-            elif isinstance(x, tuple):
-                format(stream, "~<(~;~W,~^ ~:_~@{~W~^, ~:_~}~;)~:>", x)
-            elif isinstance(x, (set, frozenset)):
-                format(stream, "~A~<([~;~@{~W~^, ~:_~}~;])~:>",
-                       type(x).__name__, list(x))
-            elif isinstance(x, dict):
-                format(stream, "~<{~;~:@{~W: ~W~:^, ~:_~}~;}~:>", x.items())
-            elif hasattr(x, "__pprint__"):
-                x.__pprint__(stream)
-            else:
-                stream.write(repr(x))
+            stream.pprint(arg)
         else:
-            stream.write(repr(x))
+            stream.write(repr(arg))
 
 class Numeric(Directive):
     """Base class for decimal, binary, octal, and hex conversion directives."""

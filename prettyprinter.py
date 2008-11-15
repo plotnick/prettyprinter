@@ -1,7 +1,7 @@
 import sys
 from collections import deque
 
-__all__ = ["PrettyPrinter"]
+__all__ = ["PrettyPrinter", "pprint"]
 
 class Token(object):
     """Base class for prettyprinter tokens."""
@@ -101,6 +101,23 @@ class PrettyPrinter(object):
 
     def logical_block(self, list=None, *args, **kwargs):
         return LogicalBlock(self, list, *args, **kwargs)
+
+    def pprint(self, obj):
+        from format import format
+
+        if isinstance(obj, list):
+            format(self, "~:<~@{~W~^, ~:_~}~:>", obj)
+        elif isinstance(obj, tuple):
+            format(self, "~<(~;~W,~^ ~:_~@{~W~^, ~:_~}~;)~:>", obj)
+        elif isinstance(obj, (set, frozenset)):
+            format(self, "~A~<([~;~@{~W~^, ~:_~}~;])~:>",
+                   type(obj).__name__, list(obj))
+        elif isinstance(obj, dict):
+            format(self, "~<{~;~:@{~W: ~W~:^, ~:_~}~;}~:>", obj.items())
+        elif hasattr(obj, "__pprint__"):
+            obj.__pprint__(self)
+        else:
+            self.write(repr(obj))
 
     def close(self):
         if not self.closed:
@@ -207,3 +224,6 @@ class PrettyPrinter(object):
         elif isinstance(x, basestring):
             self.file.write(x)
             self.space -= l
+
+def pprint(obj, *args, **kwargs):
+    PrettyPrinter(*args, **kwargs).pprint(obj)
