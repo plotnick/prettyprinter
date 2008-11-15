@@ -380,7 +380,14 @@ class Recursive(Directive):
                          stream,
                          args if self.atsign else Arguments(args.next()))
 
-directives = {
+directives = dict()
+def register_directive(char, cls):
+    assert len(char) == 1, "only single-character directives allowed"
+    assert issubclass(cls, Directive), "invalid format directive class"
+
+    directives[char.upper()] = directives[char.lower()] = cls
+
+map(lambda x: register_directive(*x), {
     "%": Newline, "&": FreshLine, "~": Tilde,
     "A": Aesthetic, "R": Representation, "S": Representation, "W": Write,
     "D": Decimal, "B": Binary, "O": Octal, "X": Hexadecimal,
@@ -392,7 +399,7 @@ directives = {
     "?": Recursive,
     "P": Plural,
      ";": Separator, "^": Escape,
-}
+}.items())
 
 def parse_control_string(control, start=0, delimiter=None):
     assert isinstance(control, basestring), "control string must be a string"
@@ -428,9 +435,9 @@ def parse_control_string(control, start=0, delimiter=None):
             elif control[i] == "@":
                 if atsign: raise FormatError("too many atsigns")
                 atsign = True; i += 1
-            elif control[i].upper() in directives.keys():
-                d = directives[control[i].upper()](params, colon, atsign,
-                                                   control, tilde, i+1); i += 1
+            elif control[i] in directives:
+                d = directives[control[i]](params, colon, atsign,
+                                           control, tilde, i+1); i += 1
                 if isinstance(d, DelimitedDirective):
                     for x in parse_control_string(control, i, d.delimiter):
                         d.append(x)
