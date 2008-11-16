@@ -15,22 +15,38 @@ class UpAndOut(Exception):
 
 class Arguments(object):
     def __init__(self, args, outer=None):
-        self.args = [arg for arg in args]
+        self.args = list(args)
         self.cur = 0
         self.outer = outer
 
     def __len__(self): return len(self.args)
     def __getitem__(self, key): return self.args[key]
     def __iter__(self): return self
+
     def next(self):
         if self.cur == len(self.args):
             raise StopIteration
-        arg = self.args[self.cur]; self.cur += 1
+        arg = self.args[self.cur]
+        self.cur += 1
         return arg
-    def peek(self): return self.args[self.cur]
-    def prev(self): self.cur -= 1; arg = self.args[self.cur]; return arg
-    def goto(self, n): self.cur = n
-    def remaining(self): return len(self.args) - self.cur
+
+    def prev(self):
+        if self.cur == 0:
+            raise StopIteration
+        self.cur -= 1
+        arg = self.args[self.cur]
+        return arg
+
+    def peek(self):
+        return self.args[self.cur]
+
+    def goto(self, n):
+        if n < 0 or n > len(self.args):
+            raise IndexError("index %d is out of bounds" % n)
+        self.cur = n
+
+    def remaining(self):
+        return len(self.args) - self.cur
 
 class Directive(object):
     variable_parameter = object()
@@ -223,9 +239,7 @@ class Goto(Directive):
 
     def format(self, stream, args):
         if self.atsign:
-            n = self.param(0, args, 0)
-            if n >= 0 and n < len(args): args.goto(n)
-            else: raise FormatError("Index %d is out of bounds." % n)
+            args.goto(self.param(0, args, 0))
         else:
             for i in range(self.param(0, args, 1)):
                 if self.colon: args.prev()
