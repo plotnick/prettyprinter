@@ -177,9 +177,6 @@ class Numeric(Directive):
     colon_allowed = atsign_allowed = True
 
     def format(self, stream, args):
-        def abs(n):
-            return n if n > 0 else -n
-
         def commafy(s, commachar, comma_interval):
             """Add commachars between groups of comma_interval digits."""
             first = len(s) % comma_interval
