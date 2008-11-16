@@ -1,7 +1,6 @@
 from __future__ import with_statement
 
 import sys
-import re
 from cStringIO import StringIO
 from prettyprinter import PrettyPrinter
 
