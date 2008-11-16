@@ -47,10 +47,50 @@ class Arguments(object):
     def remaining(self):
         return len(self.args) - self.cur
 
+class CharposStream(object):
+    """An output stream wrapper that keeps track of character positions
+    relative to the beginning of the current line."""
+
+    def __init__(self, stream):
+        self.stream = stream
+        self.charpos = 0
+        self.closed = False
+
+    def close(self):
+        if not self.closed:
+            self.stream.close()
+            self.close = True
+
+    def flush(self):
+        self.stream.flush()
+
+    def write(self, str):
+        newline = str.rfind("\n")
+        if newline == -1:
+            self.charpos += len(str)
+        else:
+            self.charpos = len(str) - (newline + 1)
+        self.stream.write(str)
+
+    def terpri(self):
+        self.stream.write("\n")
+        self.charpos = 0
+
+    def fresh_line(self):
+        if self.charpos > 0:
+            self.terpri()
+            return True
+        else:
+            return False
+
+    def getvalue(self):
+        return self.stream.getvalue()
+
 class Directive(object):
     variable_parameter = object()
     remaining_parameter = object()
     colon_allowed = atsign_allowed = False
+    need_charpos = False
 
     def __init__(self, params, colon, atsign, control, start, end):
         if colon and not self.colon_allowed and \
@@ -82,8 +122,16 @@ class Newline(Directive):
         stream.write("\n" * self.param(0, args, 1))
 
 class FreshLine(Directive):
+    need_charpos = True
+
     def format(self, stream, args):
-        stream.write("\n" * self.param(0, args, 1))
+        n = self.param(0, args, 1)
+        if n > 0:
+            stream.fresh_line()
+            n -= 1
+            while n > 0:
+                stream.terpri()
+                n -= 1
 
 class Tilde(Directive):
     def format(self, stream, args):
@@ -310,6 +358,11 @@ class Justification(DelimitedDirective):
         else:
             raise FormatError("justification not yet implemented")
 
+    @property
+    def need_charpos(self):
+        return any([d.need_charpos for c in self.clauses for d in c \
+                        if isinstance(d, Directive)])
+
 class EndConditional(Directive):
     pass
 
@@ -349,6 +402,11 @@ class Conditional(DelimitedDirective):
                     # that is performed if no other clause is selected."
                     apply_directives(self.clauses[-1], stream, args)
 
+    @property
+    def need_charpos(self):
+        return any([d.need_charpos for c in self.clauses for d in c \
+                        if isinstance(d, Directive)])
+
 class EndIteration(Directive):
     colon_allowed = True
 
@@ -374,20 +432,30 @@ class Iteration(DelimitedDirective):
                 if e.args[0].colon: break
                 else: continue
 
+    @property
+    def need_charpos(self):
+        # An empty body is replaced with a parsed argument at format time,
+        # and so we can assume nothing.  Otherwise, we need charpos if any
+        # directive in the body does.
+        body = self.clauses[0]
+        return not body or \
+            any([d.need_charpos for d in body if isinstance(d, Directive)])
+
 class Recursive(Directive):
     atsign_allowed = True
+    need_charpos = True # can't predict, so make the conservative assumption
 
     def format(self, stream, args):
         apply_directives(parse_control_string(args.next()),
                          stream,
                          args if self.atsign else Arguments(args.next()))
 
-directives = dict()
+format_directives = dict()
 def register_directive(char, cls):
     assert len(char) == 1, "only single-character directives allowed"
     assert issubclass(cls, Directive), "invalid format directive class"
 
-    directives[char.upper()] = directives[char.lower()] = cls
+    format_directives[char.upper()] = format_directives[char.lower()] = cls
 
 map(lambda x: register_directive(*x), {
     "%": Newline, "&": FreshLine, "~": Tilde,
@@ -473,9 +541,9 @@ def parse_control_string(control, start=0, delimiter=None):
                 if atsign: raise FormatError("too many atsigns")
                 atsign = True
                 i += 1
-            elif control[i] in directives:
-                d = directives[control[i]](params, colon, atsign,
-                                           control, tilde, i+1)
+            elif control[i] in format_directives:
+                d = format_directives[control[i]](params, colon, atsign,
+                                                  control, tilde, i+1)
                 i += 1
                 if isinstance(d, DelimitedDirective):
                     for x in parse_control_string(control, i, d.delimiter):
@@ -502,8 +570,13 @@ def format(destination, control, *args):
         stream = sys.stdout
     else:
         stream = destination
+
+    directives = tuple(parse_control_string(control))
+    if any([d.need_charpos for d in directives if isinstance(d, Directive)]):
+        stream = CharposStream(stream)
+
     try:
-        apply_directives(parse_control_string(control), stream, Arguments(args))
+        apply_directives(directives, stream, Arguments(args))
     except UpAndOut:
         pass
     if destination is None:
