@@ -14,7 +14,7 @@ class UpAndOut(Exception):
 
 class Arguments(object):
     def __init__(self, args, outer=None):
-        self.args = list(args)
+        self.args = tuple(args)
         self.cur = 0
         self.outer = outer
 
@@ -347,8 +347,9 @@ class Justification(DelimitedDirective):
             else:
                 raise FormatError("too many segments for ~<...~:>")
 
-            list = [x for x in args] if self.atsign else args.next()
-            with stream.logical_block(list, offset=0,
+            with stream.logical_block(tuple(args) if self.atsign \
+                                                  else args.next(),
+                                      offset=0,
                                       prefix=str(prefix),
                                       suffix=str(suffix)) as l:
                 try:
@@ -416,7 +417,7 @@ class Iteration(DelimitedDirective):
 
     def format(self, stream, args):
         max = self.param(0, args, -1)
-        body = self.clauses[0] or [x for x in parse_control_string(args.next())]
+        body = self.clauses[0] or tuple(parse_control_string(args.next()))
 
         outer = args if self.atsign else Arguments(args.next())
         inner = (lambda outer: Arguments(outer.next(), outer)) if self.colon \
