@@ -16,6 +16,13 @@ class FormatTest(unittest.TestCase):
         #self.formatEquals("1 22", "~3,,,' ,2:R", 17)
         self.formatEquals("6|55|35", "~,,'|,2:D", 0xFFFF)
 
+    def testTabulate(self):
+        self.formatEquals(" foo", "~Tfoo")
+        self.formatEquals("        foo", "~0,8Tfoo")
+        self.formatEquals("foobar  foo", "foobar~0,8Tfoo")
+        self.formatEquals("foobar  foo", "foobar~2,8@Tfoo")
+        self.formatEquals("foobar          foo", "foobar~3,8@Tfoo")
+
     def testConditional(self):
         self.formatEquals("Zero", "~0[Zero~;One~:;Other~]")
         self.formatEquals("One", "~1[Zero~;One~:;Other~]")

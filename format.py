@@ -127,11 +127,14 @@ class FreshLine(Directive):
     def format(self, stream, args):
         n = self.param(0, args, 1)
         if n > 0:
-            stream.fresh_line()
-            n -= 1
-            while n > 0:
-                stream.terpri()
+            try:
+                stream.fresh_line()
                 n -= 1
+                while n > 0:
+                    stream.terpri()
+                    n -= 1
+            except AttributeError:
+                stream.write("\n" * n)                    
 
 class Tilde(Directive):
     def format(self, stream, args):
@@ -312,6 +315,44 @@ class ConditionalNewline(Directive):
     def format(self, stream, args):
         stream.newline(mandatory=(self.colon and self.atsign), fill=self.colon)
 
+class Tabulate(Directive):
+    colon_allowed = atsign_allowed = True
+    need_charpos = True
+
+    def format(self, stream, args):
+        def ceiling(a, b):
+            q, r = divmod(a, b)
+            return (q + 1) if r else q
+
+        def output_spaces(stream, n):
+            stream.write(" " * n)
+
+        if self.colon:
+            raise FormatError("%s not yet supported" % self)
+        elif self.atsign:
+            # relative tabulation
+            colrel = int(self.param(0, args, 1))
+            colinc = int(self.param(1, args, 1))
+            try:
+                cur = stream.charpos
+                output_spaces(stream,
+                              colinc * ceiling(cur + colrel, colinc) - cur)
+            except AttributeError:
+                output_spaces(stream, colrel)
+
+        else:
+            # absolute tabulation
+            colnum = int(self.param(0, args, 1))
+            colinc = int(self.param(1, args, 1))
+            try:
+                cur = stream.charpos
+                if cur < colnum:
+                    output_spaces(stream, colnum - cur)
+                elif colinc > 0:
+                    output_spaces(stream, colinc - ((cur - colnum) % colinc))
+            except AttributeError:
+                stream.write("  ")
+
 class EndJustification(Directive):
     colon_allowed = True
 
@@ -461,6 +502,7 @@ map(lambda x: register_directive(*x), {
     "D": Decimal, "B": Binary, "O": Octal, "X": Hexadecimal,
     "*": Goto,
     "_": ConditionalNewline,
+    "T": Tabulate,
     "<": Justification, ">": EndJustification,
     "[": Conditional, "]": EndConditional,
     "{": Iteration, "}": EndIteration,
