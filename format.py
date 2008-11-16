@@ -33,7 +33,6 @@ class Arguments(object):
     def remaining(self): return len(self.args) - self.cur
 
 class Directive(object):
-    prefix_param = re.compile(r"(?:([+-]?\d+)|'(.)|([Vv])|(#)),?")
     variable_parameter = object()
     remaining_parameter = object()
     colon_allowed = atsign_allowed = False
@@ -405,39 +404,76 @@ def parse_control_string(control, start=0, delimiter=None):
     assert isinstance(control, basestring), "control string must be a string"
     assert start >= 0, "can't start parsing from end"
 
-    while start < len(control):
-        tilde = control.find("~", start)
+    i = start
+    end = len(control)
+    while i < end:
+        tilde = control.find("~", i)
         if tilde == -1:
-            yield Literal(control, start, len(control))
+            yield Literal(control, i, end)
             break
-        elif tilde > start:
-            yield Literal(control, start, tilde)
+        elif tilde > i:
+            yield Literal(control, i, tilde)
         i = tilde + 1
 
         params = []
-        while True:
-            # Match optional parameters, separated by commas.
-            m = Directive.prefix_param.match(control, i)
-            if m:
-                if m.group(1): params.append(int(m.group(1)))
-                elif m.group(2): params.append(m.group(2))
-                elif m.group(3): params.append(Directive.variable_parameter)
-                elif m.group(4): params.append(Directive.remaining_parameter)
-                i = m.end()
-            elif control[i] == ",": params.append(None); i += 1
-            else: break
+        while i < end:
+            # empty parameter
+            if control[i] == ",":
+                params.append(None)
+                i += 1
+                continue
+
+            # numeric parameter
+            mark = i
+            if control[i] in "+-":
+                i += 1
+            while i < end and control[i].isdigit():
+                i += 1
+            if i > mark:
+                params.append(int(control[mark:i]))
+                if control[i] == ",":
+                    i += 1
+                continue
+
+            # character parameter
+            if control[i] == "'":
+                params.append(control[i+1])
+                i += 2
+                if control[i] == ",":
+                    i += 1
+                continue
+
+            # "variable" parameter
+            if control[i] in "Vv":
+                params.append(Directive.variable_parameter)
+                i += 1
+                if control[i] == ",":
+                    i += 1
+                continue
+
+            # "remaining" parameter
+            if control[i] == "#":
+                params.append(Directive.remaining_parameter)
+                i += 1
+                if control[i] == ",":
+                    i += 1
+                continue
+            break
 
         colon = atsign = False
-        while True:
+        while i < end:
             if control[i] == ":":
                 if colon: raise FormatError("too many colons")
-                colon = True; i += 1
+                colon = True
+                i += 1
             elif control[i] == "@":
                 if atsign: raise FormatError("too many atsigns")
-                atsign = True; i += 1
+                atsign = True
+                i += 1
             elif control[i] in directives:
                 d = directives[control[i]](params, colon, atsign,
-                                           control, tilde, i+1); i += 1
+                                           control, tilde, i+1)
+                i += 1
                 if isinstance(d, DelimitedDirective):
                     for x in parse_control_string(control, i, d.delimiter):
                         d.append(x)
@@ -446,9 +482,8 @@ def parse_control_string(control, start=0, delimiter=None):
                 if delimiter and isinstance(d, delimiter): return
                 else: break
             else:
-                raise FormatError("unknown format directive " + \
-                                      control[tilde:i+1].upper())
-        start = i
+                raise FormatError("unknown format directive %s" % \
+                                      control[tilde:i+1])
 
 def apply_directives(directives, stream, args):
     for d in directives:
