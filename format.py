@@ -95,7 +95,7 @@ class Newline(Directive):
 
 class FreshLine(Directive):
     def format(self, stream, args):
-        stream.write("~" * self.param(0, args, 1))
+        stream.write("\n" * self.param(0, args, 1))
 
 class Tilde(Directive):
     def format(self, stream, args):
