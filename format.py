@@ -515,6 +515,10 @@ def parse_control_string(control, start=0, delimiter=None):
     assert isinstance(control, basestring), "control string must be a string"
     assert start >= 0, "can't start parsing from end"
 
+    def format_error(string, *args):
+        raise FormatError(format(None, "~?~%~2@T\"~A\"~%~V@T^",
+                                 string, args, control, i + 2))
+
     i = start
     end = len(control)
     while i < end:
@@ -574,27 +578,32 @@ def parse_control_string(control, start=0, delimiter=None):
         colon = atsign = False
         while i < end:
             if control[i] == ":":
-                if colon: raise FormatError("too many colons")
+                if colon: format_error("too many colons")
                 colon = True
                 i += 1
             elif control[i] == "@":
-                if atsign: raise FormatError("too many atsigns")
+                if atsign: format_error("too many atsigns")
                 atsign = True
                 i += 1
-            elif control[i] in format_directives:
-                d = format_directives[control[i]](params, colon, atsign,
-                                                  control, tilde, i+1)
-                i += 1
-                if isinstance(d, DelimitedDirective):
-                    for x in parse_control_string(control, i, d.delimiter):
-                        d.append(x)
-                    i = d.end
-                yield d
-                if delimiter and isinstance(d, delimiter): return
-                else: break
             else:
-                raise FormatError("unknown format directive %s" % \
-                                      control[tilde:i+1])
+                break
+
+        char = control[i]
+        i += 1
+        try:
+            d = format_directives[char](params, colon, atsign,
+                                        control, tilde, i)
+        except FormatError, e:
+            format_error(e.message)
+        except KeyError:
+            format_error("unknown format directive")
+        if isinstance(d, DelimitedDirective):
+            for x in parse_control_string(control, i, d.delimiter):
+                d.append(x)
+            i = d.end
+        yield d
+        if delimiter and isinstance(d, delimiter):
+            return
 
 def apply_directives(directives, stream, args):
     for d in directives:
