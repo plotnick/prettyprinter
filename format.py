@@ -78,17 +78,6 @@ class Directive(object):
         else:
             return default
 
-class Literal(Directive):
-    """Strictly speaking, string literals are not directives, but treating
-    them as if they were simplifies the logic."""
-
-    def __init__(self, control, start, end):
-        super(Literal, self).__init__(None, False, False, control, start, end)
-        assert end > start
-
-    def format(self, stream, args):
-        stream.write(str(self))
-
 class Newline(Directive):
     def format(self, stream, args):
         stream.write("\n" * self.param(0, args, 1))
@@ -270,7 +259,8 @@ class DelimitedDirective(Directive):
             self.delimiter = x
         else:
             self.clauses[len(self.separators)].append(x)
-        self.end = x.end
+
+        self.end = (self.end + len(x)) if isinstance(x, basestring) else x.end
 
 class ConditionalNewline(Directive):
     colon_allowed = atsign_allowed = True
@@ -423,10 +413,10 @@ def parse_control_string(control, start=0, delimiter=None):
     while i < end:
         tilde = control.find("~", i)
         if tilde == -1:
-            yield Literal(control, i, end)
+            yield control[i:end]
             break
         elif tilde > i:
-            yield Literal(control, i, tilde)
+            yield control[i:tilde]
         i = tilde + 1
 
         params = []
@@ -501,7 +491,10 @@ def parse_control_string(control, start=0, delimiter=None):
 
 def apply_directives(directives, stream, args):
     for d in directives:
-        d.format(stream, args)
+        if isinstance(d, basestring):
+            stream.write(d)
+        else:
+            d.format(stream, args)
 
 def format(destination, control, *args):
     if destination is None:
