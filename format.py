@@ -498,8 +498,11 @@ class CaseConversion(DelimitedDirective):
 
     def format(self, stream, args):
         s = StringIO()
-        apply_directives(self.clauses[0], s, args)
-        string = s.getvalue()
+        try:
+            apply_directives(self.clauses[0], s, args)
+            string = s.getvalue()
+        finally:
+            s.close()
         if self.colon and self.atsign:
             stream.write(string.upper())
         elif self.colon:
