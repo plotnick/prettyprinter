@@ -113,5 +113,13 @@ class FormatTest(unittest.TestCase):
         self.formatEquals("<Foo 5> 7", "~@? ~D", "<~A ~D>", "Foo", 5, 7)
         self.formatEquals("<Foo 5> 14", "~@? ~D", "<~A ~D>", "Foo", 5, 14, 7)
 
+    def testCaseConversion(self):
+        l = ["foo", "BAR", "baz"]
+        self.formatEquals("foo bar baz", "~(~{~A~^ ~}~)", l)
+        self.formatEquals("Foo Bar Baz", "~:(~{~A~^ ~}~)", l)
+        self.formatEquals("Foo bar baz", "~@(~{~A~^ ~}~)", l)
+        self.formatEquals("FOO BAR BAZ", "~:@(~{~A~^ ~}~)", l)
+        self.formatEquals("How is bob smith?", "~@(how is ~:(BOB SMITH~)?~)")
+
 if __name__ == "__main__":
     unittest.main()

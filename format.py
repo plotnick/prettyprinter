@@ -489,6 +489,26 @@ class Recursive(Directive):
                          stream,
                          args if self.atsign else Arguments(args.next()))
 
+class EndCaseConversion(Directive):
+    pass
+
+class CaseConversion(DelimitedDirective):
+    colon_allowed = atsign_allowed = True
+    delimiter = EndCaseConversion
+
+    def format(self, stream, args):
+        s = StringIO()
+        apply_directives(self.clauses[0], s, args)
+        string = s.getvalue()
+        if self.colon and self.atsign:
+            stream.write(string.upper())
+        elif self.colon:
+            stream.write(" ".join([s.capitalize() for s in string.split(" ")]))
+        elif self.atsign:
+            stream.write(string.capitalize())
+        else:
+            stream.write(string.lower())
+
 format_directives = dict()
 def register_directive(char, cls):
     assert len(char) == 1, "only single-character directives allowed"
@@ -507,7 +527,7 @@ map(lambda x: register_directive(*x), {
     "[": Conditional, "]": EndConditional,
     "{": Iteration, "}": EndIteration,
     "?": Recursive,
-    "P": Plural,
+    "(": CaseConversion, ")": EndCaseConversion, "P": Plural,
      ";": Separator, "^": Escape,
 }.items())
 
