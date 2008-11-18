@@ -108,6 +108,9 @@ class FormatTest(unittest.TestCase):
                           items, "FOO", "BAR", "BAZ", "QUUX")
 
     def testRecursive(self):
+        self.formatRaises(FormatError, "~:?")
+        self.formatRaises(FormatError, "~:@?")
+
         self.formatEquals("<Foo 5> 7", "~? ~D", "<~A ~D>", ["Foo", 5], 7)
         self.formatEquals("<Foo 5> 7", "~? ~D", "<~A ~D>", ["Foo", 5, 14], 7)
         self.formatEquals("<Foo 5> 7", "~@? ~D", "<~A ~D>", "Foo", 5, 7)

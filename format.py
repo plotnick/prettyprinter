@@ -99,21 +99,28 @@ class CharposStream(object):
     def getvalue(self):
         return self.stream.getvalue()
 
+class Modifiers:
+    colon = frozenset(":")
+    atsign = frozenset("@")
+    both = frozenset((":@",))
+    all = colon | atsign | both
+
 class Directive(object):
     variable_parameter = object()
     remaining_parameter = object()
-    colon_allowed = atsign_allowed = False
+    modifiers_allowed = None
     need_charpos = False
 
     def __init__(self, params, colon, atsign, control, start, end, parent=None):
-        if colon and not self.colon_allowed and \
-                atsign and not self.atsign_allowed:
+        if (colon or atsign) and self.modifiers_allowed is None:
             raise FormatError("neither colon nor atsign allowed "
                               "for this directive")
-        elif colon and not self.colon_allowed:
+        elif (colon and atsign) and ":@" not in self.modifiers_allowed:
+            raise FormatError("cannot specify both colon and at-sign")
+        elif colon and ":" not in self.modifiers_allowed:
             raise FormatError("colon not allowed for this directive")
-        elif atsign and not self.atsign_allowed:
-            raise FormatError("atsign not allowed for this directive")
+        elif atsign and "@" not in self.modifiers_allowed:
+            raise FormatError("at-sign not allowed for this directive")
 
         self.params = params; self.colon = colon; self.atsign = atsign
         self.control = control; self.start = start; self.end = end
@@ -165,7 +172,7 @@ class Tilde(Directive):
         stream.write("~" * self.param(0, args, 1))
 
 class Aesthetic(Directive):
-    colon_allowed = atsign_allowed = True
+    modifiers_allowed = Modifiers.all
 
     def format(self, stream, args):
         mincol = self.param(0, args, 0)
@@ -183,13 +190,13 @@ class Aesthetic(Directive):
                      s.ljust(mincol, padchar))
 
 class Representation(Directive):
-    colon_allowed = atsign_allowed = True
+    modifiers_allowed = Modifiers.all
 
     def format(self, stream, args):
         stream.write(repr(args.next()))
 
 class Write(Directive):
-    colon_allowed = atsign_allowed = True
+    modifiers_allowed = Modifiers.all
 
     def format(self, stream, args):
         arg = args.next()
@@ -201,7 +208,7 @@ class Write(Directive):
 class Numeric(Directive):
     """Base class for decimal, binary, octal, and hex conversion directives."""
 
-    colon_allowed = atsign_allowed = True
+    modifiers_allowed = Modifiers.all
 
     def format(self, stream, args):
         def commafy(s, commachar, comma_interval):
@@ -270,7 +277,7 @@ class Hexadecimal(Numeric):
         return "%x" % n
 
 class Plural(Directive):
-    colon_allowed = atsign_allowed = True
+    modifiers_allowed = Modifiers.all
 
     def format(self, stream, args):
         if self.colon: args.prev()
@@ -278,10 +285,10 @@ class Plural(Directive):
                      ("" if args.next() == 1 else "s"))
 
 class Separator(Directive):
-    colon_allowed = True
+    modifiers_allowed = Modifiers.colon
 
 class Escape(Directive):
-    colon_allowed = True
+    modifiers_allowed = Modifiers.colon
 
     def __init__(self, *args):
         super(Escape, self).__init__(*args)
@@ -318,7 +325,7 @@ class Escape(Directive):
             raise self.exception()
 
 class Goto(Directive):
-    colon_allowed = atsign_allowed = True
+    modifiers_allowed = Modifiers.all
 
     def format(self, stream, args):
         if self.atsign:
@@ -365,13 +372,13 @@ class DelimitedDirective(Directive):
                                      if isinstance(d, Directive)])
 
 class ConditionalNewline(Directive):
-    colon_allowed = atsign_allowed = True
+    modifiers_allowed = Modifiers.all
 
     def format(self, stream, args):
         stream.newline(mandatory=(self.colon and self.atsign), fill=self.colon)
 
 class Tabulate(Directive):
-    colon_allowed = atsign_allowed = True
+    modifiers_allowed = Modifiers.all
     need_charpos = True
 
     def format(self, stream, args):
@@ -409,14 +416,14 @@ class Tabulate(Directive):
                 stream.write("  ")
 
 class EndJustification(Directive):
-    colon_allowed = True
+    modifiers_allowed = Modifiers.colon
 
 class Justification(DelimitedDirective):
     """This class actually implements two essentially unrelated format
     directives: justification (~<...~>) and pprint-logical-block (~<...~:>).
     Blame Dick Waters."""
 
-    colon_allowed = atsign_allowed = True
+    modifiers_allowed = Modifiers.all
     delimiter = EndJustification
 
     def delimited(self):
@@ -461,7 +468,7 @@ class EndConditional(Directive):
     pass
 
 class Conditional(DelimitedDirective):
-    colon_allowed = atsign_allowed = True
+    modifiers_allowed = Modifiers.all
     delimiter = EndConditional
 
     def delimited(self):
@@ -505,10 +512,10 @@ class Conditional(DelimitedDirective):
                     apply_directives(stream, self.clauses[-1], args)
 
 class EndIteration(Directive):
-    colon_allowed = True
+    modifiers_allowed = Modifiers.colon
 
 class Iteration(DelimitedDirective):
-    colon_allowed = atsign_allowed = True
+    modifiers_allowed = Modifiers.all
     delimiter = EndIteration
 
     def append(self, x):
@@ -541,7 +548,7 @@ class Iteration(DelimitedDirective):
                 break
 
 class Recursive(Directive):
-    atsign_allowed = True
+    modifiers_allowed = Modifiers.atsign
     need_charpos = True
 
     def format(self, stream, args):
@@ -553,7 +560,7 @@ class EndCaseConversion(Directive):
     pass
 
 class CaseConversion(DelimitedDirective):
-    colon_allowed = atsign_allowed = True
+    modifiers_allowed = Modifiers.all
     delimiter = EndCaseConversion
 
     def delimited(self):
