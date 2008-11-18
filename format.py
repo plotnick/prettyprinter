@@ -148,9 +148,24 @@ class Directive(object):
             parent = parent.parent
         return None
 
-class Newline(Directive):
+class ConstantChar(Directive):
+    def __new__(cls, params, colon, atsign, *args):
+        if colon or atsign:
+            raise FormatError("neither colon nor atsign allowed "
+                              "for this directive")
+        if not params:
+            return cls.character
+        elif params and isinstance(params[0], int):
+            return cls.character * params[0]
+        else:
+            return super(ConstantChar, cls).__new__(cls, params, colon, atsign,
+                                                    *args)
+
     def format(self, stream, args):
-        stream.write("\n" * self.param(0, args, 1))
+        stream.write(self.character * self.param(0, args, 1))
+
+class Newline(ConstantChar):
+    character = "\n"
 
 class FreshLine(Directive):
     need_charpos = True
@@ -167,9 +182,8 @@ class FreshLine(Directive):
             except AttributeError:
                 stream.write("\n" * n)                    
 
-class Tilde(Directive):
-    def format(self, stream, args):
-        stream.write("~" * self.param(0, args, 1))
+class Tilde(ConstantChar):
+    character = "~"
 
 class Aesthetic(Directive):
     modifiers_allowed = Modifiers.all
