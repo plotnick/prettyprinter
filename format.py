@@ -560,13 +560,14 @@ map(lambda x: register_directive(*x), {
      ";": Separator, "^": Escape,
 }.items())
 
+def format_error(control, index, message, *args):
+    offset = 2
+    raise FormatError(format(None, "~?~%~V@T\"~A\"~%~V@T^",
+                             message, args, offset, control, index + offset))
+
 def parse_control_string(control, start=0, delimiter=None):
     assert isinstance(control, basestring), "control string must be a string"
     assert start >= 0, "can't start parsing from end"
-
-    def format_error(string, *args):
-        raise FormatError(format(None, "~?~%~2@T\"~A\"~%~V@T^",
-                                 string, args, control, i + 2))
 
     i = start
     end = len(control)
@@ -627,11 +628,11 @@ def parse_control_string(control, start=0, delimiter=None):
         colon = atsign = False
         while i < end:
             if control[i] == ":":
-                if colon: format_error("too many colons")
+                if colon: format_error(control, i, "too many colons")
                 colon = True
                 i += 1
             elif control[i] == "@":
-                if atsign: format_error("too many atsigns")
+                if atsign: format_error(control, i, "too many atsigns")
                 atsign = True
                 i += 1
             else:
@@ -643,9 +644,9 @@ def parse_control_string(control, start=0, delimiter=None):
             d = format_directives[char](params, colon, atsign,
                                         control, tilde, i)
         except FormatError, e:
-            format_error(e.message)
+            format_error(control, i, e.message)
         except KeyError:
-            format_error("unknown format directive")
+            format_error(control, i, "unknown format directive")
         if isinstance(d, DelimitedDirective):
             for x in parse_control_string(control, i, d.delimiter):
                 try:
@@ -653,7 +654,7 @@ def parse_control_string(control, start=0, delimiter=None):
                 except FormatError, e:
                     if isinstance(x, Directive) and x is not d.delimiter:
                         i += x.start
-                    format_error(e.message)
+                    format_error(control, i, e.message)
             i = d.end
         yield d
         if delimiter and isinstance(d, delimiter):
