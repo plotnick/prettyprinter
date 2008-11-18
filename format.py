@@ -12,6 +12,9 @@ class FormatError(StandardError):
 class UpAndOut(Exception):
     pass
 
+class UpUpAndOut(Exception):
+    pass
+
 class Arguments(object):
     def __init__(self, args, outer=None):
         self.args = tuple(args)
@@ -92,7 +95,7 @@ class Directive(object):
     colon_allowed = atsign_allowed = False
     need_charpos = False
 
-    def __init__(self, params, colon, atsign, control, start, end):
+    def __init__(self, params, colon, atsign, control, start, end, parent=None):
         if colon and not self.colon_allowed and \
                 atsign and not self.atsign_allowed:
             raise FormatError("neither colon nor atsign allowed "
@@ -104,6 +107,7 @@ class Directive(object):
 
         self.params = params; self.colon = colon; self.atsign = atsign
         self.control = control; self.start = start; self.end = end
+        self.parent = parent
 
     def __str__(self): return self.control[self.start:self.end]
     def __len__(self): return self.end - self.start
@@ -116,6 +120,16 @@ class Directive(object):
             return p if p is not None else default
         else:
             return default
+
+    def governed_by(self, cls):
+        """If an instance of cls appears anywhere in the chain of parents from
+        this instance to the root, return that instance, or None otherwise."""
+        parent = self.parent
+        while parent:
+            if isinstance(parent, cls):
+                return parent
+            parent = parent.parent
+        return None
 
 class Newline(Directive):
     def format(self, stream, args):
@@ -259,16 +273,39 @@ class Separator(Directive):
 class Escape(Directive):
     colon_allowed = True
 
-    def format(self, stream, args):
-        if self.colon and not args.outer:
-            raise FormatError("attempt to use ~:^ outside a ~:{...~} construct")
+    def __init__(self, *args):
+        super(Escape, self).__init__(*args)
 
+        if self.colon:
+            iteration = self.governed_by(Iteration)
+            if not (iteration and iteration.colon):
+                raise FormatError("can't have ~~:^ outside of a "
+                                  "~~:{...~~} construct")
+        self.exception = UpUpAndOut if self.colon else UpAndOut
+
+        if len(self.params) == 0:
+            self.format = self.check_remaining_outer if self.colon \
+                                                     else self.check_remaining
+        elif len(self.params) in (1, 2, 3):
+            self.format = self.check_params
+        else:
+            raise FormatError("too many parameters")
+
+    def check_remaining(self, stream, args):
+        if args.remaining() == 0:
+            raise UpAndOut()
+
+    def check_remaining_outer(self, stream, args):
+        if args.outer.remaining() == 0:
+            raise UpUpAndOut()
+
+    def check_params(self, stream, args):
+        # This could be split up, too.
         (param1, param2, param3) = (self.param(i, args) for i in range(3))
         if (param3 is not None and param1 <= param2 and param2 <= param3) or \
            (param2 is not None and param1 == param2) or \
-           (param1 is not None and param1 == 0) or \
-           ((args.outer if self.colon else args).remaining() == 0):
-            raise UpAndOut(self)
+           (param1 is not None and param1 == 0):
+            raise self.exception()
 
 class Goto(Directive):
     colon_allowed = atsign_allowed = True
@@ -290,9 +327,8 @@ class DelimitedDirective(Directive):
     the class of the closing delimiter.  Instances will have that attribute
     set to the instance of that class actually encountered."""
 
-    def __init__(self, params, colon, atsign, control, start, end):
-        super(DelimitedDirective, self).__init__(params, colon, atsign,
-                                                 control, start, end)
+    def __init__(self, *args):
+        super(DelimitedDirective, self).__init__(*args)
         self.clauses = [[]]
         self.separators = []
 
@@ -475,7 +511,6 @@ class Iteration(DelimitedDirective):
         self.need_charpos = not self.body or \
             any([d.need_charpos for d in self.body if isinstance(d, Directive)])
 
-
     def format(self, stream, args):
         max = self.param(0, args, -1)
         body = self.body or tuple(parse_control_string(args.next()))
@@ -490,9 +525,10 @@ class Iteration(DelimitedDirective):
             i += 1
             try:
                 apply_directives(stream, body, inner(outer))
-            except UpAndOut, e:
-                if e.args[0].colon: break
-                else: continue
+            except UpAndOut:
+                continue
+            except UpUpAndOut:
+                break
 
 class Recursive(Directive):
     atsign_allowed = True
@@ -565,7 +601,7 @@ def format_error(control, index, message, *args):
     raise FormatError(format(None, "~?~%~V@T\"~A\"~%~V@T^",
                              message, args, offset, control, index + offset))
 
-def parse_control_string(control, start=0, delimiter=None):
+def parse_control_string(control, start=0, parent=None):
     assert isinstance(control, basestring), "control string must be a string"
     assert start >= 0, "can't start parsing from end"
 
@@ -642,13 +678,13 @@ def parse_control_string(control, start=0, delimiter=None):
         i += 1
         try:
             d = format_directives[char](params, colon, atsign,
-                                        control, tilde, i)
+                                        control, tilde, i, parent)
         except FormatError, e:
             format_error(control, i, e.message)
         except KeyError:
             format_error(control, i, "unknown format directive")
         if isinstance(d, DelimitedDirective):
-            for x in parse_control_string(control, i, d.delimiter):
+            for x in parse_control_string(control, i, d):
                 try:
                     d.append(x)
                 except FormatError, e:
@@ -657,7 +693,7 @@ def parse_control_string(control, start=0, delimiter=None):
                     format_error(control, i, e.message)
             i = d.end
         yield d
-        if delimiter and isinstance(d, delimiter):
+        if parent and d is parent.delimiter:
             return
 
 class Formatter(object):
