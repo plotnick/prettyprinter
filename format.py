@@ -4,7 +4,7 @@ import sys
 from cStringIO import StringIO
 from prettyprinter import PrettyPrinter
 
-__all__ = ["format"]
+__all__ = ["Formatter", "format"]
 
 class FormatError(StandardError):
     pass
@@ -51,9 +51,9 @@ class CharposStream(object):
     """An output stream wrapper that keeps track of character positions
     relative to the beginning of the current line."""
 
-    def __init__(self, stream):
+    def __init__(self, stream, charpos=0):
         self.stream = stream
-        self.charpos = 0
+        self.charpos = charpos
         self.closed = False
 
     def close(self):
@@ -304,10 +304,19 @@ class DelimitedDirective(Directive):
             self.clauses.append([])
         elif isinstance(x, self.delimiter):
             self.delimiter = x
+            self.delimited()
         else:
             self.clauses[len(self.separators)].append(x)
+        self.end = x.end if isinstance(x, Directive) else (self.end + len(x))
 
-        self.end = (self.end + len(x)) if isinstance(x, basestring) else x.end
+    def delimited(self):
+        """Called when the complete directive, including the delimiter, has
+        been parsed."""
+
+        # Most delimited directives need charpos if any of their clauses do.
+        self.need_charpos = any([d.need_charpos for c in self.clauses \
+                                                for d in c \
+                                     if isinstance(d, Directive)])
 
 class ConditionalNewline(Directive):
     colon_allowed = atsign_allowed = True
@@ -364,43 +373,43 @@ class Justification(DelimitedDirective):
     colon_allowed = atsign_allowed = True
     delimiter = EndJustification
 
+    def delimited(self):
+        super(Justification, self).delimited()
+
+        # Note: with the colon modifier, the prefix & suffix default to
+        # square, not round brackets; this is Python, not Lisp.
+        self.prefix = "[" if self.colon else ""
+        self.suffix = "]" if self.colon else ""
+        if len(self.clauses) == 0:
+            self.body = []
+        elif len(self.clauses) == 1:
+            (self.body,) = self.clauses
+        elif len(self.clauses) == 2:
+            ((self.prefix,), self.body) = self.clauses
+        elif len(self.clauses) == 3:
+            ((self.prefix,), self.body, (self.suffix,)) = self.clauses
+        else:
+            raise FormatError("too many segments for ~~<...~~:>")
+
     def format(self, stream, args):
         if self.delimiter.colon:
             # pprint-logical-block
             if not isinstance(stream, PrettyPrinter):
                 stream = PrettyPrinter(file=stream)
 
-            # Note: with the colon modifier, the prefix & suffix default to
-            # square, not round brackets; this is Python, not Lisp.
-            prefix = "[" if self.colon else ""
-            suffix = "]" if self.colon else ""
-            if len(self.clauses) == 0:
-                body = []
-            elif len(self.clauses) == 1:
-                (body,) = self.clauses
-            elif len(self.clauses) == 2:
-                ((prefix,), body) = self.clauses
-            elif len(self.clauses) == 3:
-                ((prefix,), body, (suffix,)) = self.clauses
-            else:
-                raise FormatError("too many segments for ~<...~:>")
-
-            with stream.logical_block(tuple(args) if self.atsign \
-                                                  else args.next(),
+            with stream.logical_block(None,
                                       offset=0,
-                                      prefix=str(prefix),
-                                      suffix=str(suffix)) as l:
+                                      prefix=str(self.prefix),
+                                      suffix=str(self.suffix)):
                 try:
-                    apply_directives(body, stream, Arguments(l))
+                    apply_directives(stream,
+                                     self.body,
+                                     args if self.atsign \
+                                          else Arguments(args.next()))
                 except UpAndOut:
                     pass
         else:
             raise FormatError("justification not yet implemented")
-
-    @property
-    def need_charpos(self):
-        return any([d.need_charpos for c in self.clauses for d in c \
-                        if isinstance(d, Directive)])
 
 class EndConditional(Directive):
     pass
@@ -409,42 +418,45 @@ class Conditional(DelimitedDirective):
     colon_allowed = atsign_allowed = True
     delimiter = EndConditional
 
+    def delimited(self):
+        if self.colon:
+            if len(self.clauses) != 2:
+                raise FormatError("must specify exactly two sections")
+        elif self.atsign:
+            if len(self.clauses) != 1:
+                raise FormatError("can only specify one section")
+        else:
+            if len(self.separators) > 1 and \
+                    any([s.colon for s in self.separators[0:-1]]):
+                raise FormatError("only the last ~~; may have a colon")
+
     def format(self, stream, args):
         if self.colon:
             # "~:[ALTERNATIVE~;CONSEQUENT~] selects the ALTERNATIVE control
             # string if arg is false, and selects the CONSEQUENT control
             # string otherwise."
-            if len(self.clauses) != 2:
-                raise FormatError("must specify exactly two sections")
-            apply_directives(self.clauses[1 if args.next() else 0], stream, args)
+            apply_directives(stream, self.clauses[1 if args.next() else 0], args)
         elif self.atsign:
             # "~@[CONSEQUENT~] tests the argument.  If it is true, then
             # the argument is not used up by the ~[ command but remains
             # as the next one to be processed, and the one clause
             # CONSEQUENT is processed.  If the arg is false, then the
             # argument is used up, and the clause is not processed."
-            if len(self.clauses) != 1:
-                raise FormatError("can only specify one section")
             if args.peek():
-                apply_directives(self.clauses[0], stream, args)
+                apply_directives(stream, self.clauses[0], args)
             else:
                 args.next()
         else:
             try:
                 n = self.param(0, args)
                 if n is None: n = args.next()
-                apply_directives(self.clauses[n], stream, args)
+                apply_directives(stream, self.clauses[n], args)
             except IndexError:
                 if self.separators[-1].colon:
                     # "If the last ~; used to separate clauses is ~:;
                     # instead, then the last clause is an 'else' clause
                     # that is performed if no other clause is selected."
-                    apply_directives(self.clauses[-1], stream, args)
-
-    @property
-    def need_charpos(self):
-        return any([d.need_charpos for c in self.clauses for d in c \
-                        if isinstance(d, Directive)])
+                    apply_directives(stream, self.clauses[-1], args)
 
 class EndIteration(Directive):
     colon_allowed = True
@@ -453,40 +465,42 @@ class Iteration(DelimitedDirective):
     colon_allowed = atsign_allowed = True
     delimiter = EndIteration
 
+    def append(self, x):
+        if isinstance(x, Separator):
+            raise FormatError("~~; not permitted in ~~{...~~}")
+        super(Iteration, self).append(x)
+
+    def delimited(self):
+        self.body = self.clauses[0]
+        self.need_charpos = not self.body or \
+            any([d.need_charpos for d in self.body if isinstance(d, Directive)])
+
+
     def format(self, stream, args):
         max = self.param(0, args, -1)
-        body = self.clauses[0] or tuple(parse_control_string(args.next()))
+        body = self.body or tuple(parse_control_string(args.next()))
 
         outer = args if self.atsign else Arguments(args.next())
-        inner = (lambda outer: Arguments(outer.next(), outer)) if self.colon \
-            else lambda outer: outer
+        inner = (lambda args: Arguments(args.next(), args)) if self.colon else \
+                (lambda args: args)
 
         i = 0
         while outer.remaining() > 0 or (i == 0 and self.delimiter.colon):
             if i == max: break
             i += 1
             try:
-                apply_directives(body, stream, inner(outer))
+                apply_directives(stream, body, inner(outer))
             except UpAndOut, e:
                 if e.args[0].colon: break
                 else: continue
 
-    @property
-    def need_charpos(self):
-        # An empty body is replaced with a parsed argument at format time,
-        # and so we can assume nothing.  Otherwise, we need charpos if any
-        # directive in the body does.
-        body = self.clauses[0]
-        return not body or \
-            any([d.need_charpos for d in body if isinstance(d, Directive)])
-
 class Recursive(Directive):
     atsign_allowed = True
-    need_charpos = True # can't predict, so make the conservative assumption
+    need_charpos = True
 
     def format(self, stream, args):
-        apply_directives(parse_control_string(args.next()),
-                         stream,
+        apply_directives(stream,
+                         parse_control_string(args.next()),
                          args if self.atsign else Arguments(args.next()))
 
 class EndCaseConversion(Directive):
@@ -496,13 +510,25 @@ class CaseConversion(DelimitedDirective):
     colon_allowed = atsign_allowed = True
     delimiter = EndCaseConversion
 
+    def delimited(self):
+        super(CaseConversion, self).delimited()
+        self.body = self.clauses[0]
+
     def format(self, stream, args):
-        s = StringIO()
+        if self.need_charpos:
+            try:
+                charpos = stream.charpos
+            except AttributeError:
+                charpos = 0
+            s = CharposStream(StringIO(), charpos)
+        else:
+            s = StringIO()
         try:
-            apply_directives(self.clauses[0], s, args)
+            apply_directives(s, self.body, args)
             string = s.getvalue()
         finally:
             s.close()
+
         if self.colon and self.atsign:
             stream.write(string.upper())
         elif self.colon:
@@ -622,18 +648,42 @@ def parse_control_string(control, start=0, delimiter=None):
             format_error("unknown format directive")
         if isinstance(d, DelimitedDirective):
             for x in parse_control_string(control, i, d.delimiter):
-                d.append(x)
+                try:
+                    d.append(x)
+                except FormatError, e:
+                    if isinstance(x, Directive) and x is not d.delimiter:
+                        i += x.start
+                    format_error(e.message)
             i = d.end
         yield d
         if delimiter and isinstance(d, delimiter):
             return
 
-def apply_directives(directives, stream, args):
-    for d in directives:
-        if isinstance(d, basestring):
-            stream.write(d)
+class Formatter(object):
+    def __init__(self, control):
+        if isinstance(control, basestring):
+            self.directives = tuple(parse_control_string(control))
+        elif isinstance(control, (tuple, list)):
+            self.directives = control
+        self.need_charpos = any([d.need_charpos for d in self.directives \
+                                     if isinstance(d, Directive)])
+
+    def __call__(self, stream, *args):
+        if not isinstance(stream, CharposStream) and self.need_charpos:
+            stream = CharposStream(stream)
+        if len(args) == 1 and isinstance(args[0], Arguments):
+            args = args[0]
         else:
-            d.format(stream, args)
+            args = Arguments(args)
+        apply_directives(stream, self.directives, args)
+        return args
+
+def apply_directives(stream, directives, args):
+    for directive in directives:
+        if isinstance(directive, basestring):
+            stream.write(directive)
+        else:
+            directive.format(stream, args)
 
 def format(destination, control, *args):
     if destination is None:
@@ -642,13 +692,9 @@ def format(destination, control, *args):
         stream = sys.stdout
     else:
         stream = destination
-
-    directives = tuple(parse_control_string(control))
-    if any([d.need_charpos for d in directives if isinstance(d, Directive)]):
-        stream = CharposStream(stream)
-
+    f = control if isinstance(control, Formatter) else Formatter(control)
     try:
-        apply_directives(directives, stream, Arguments(args))
+        f(stream, *args)
     except UpAndOut:
         pass
     if destination is None:
