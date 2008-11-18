@@ -17,38 +17,48 @@ class UpUpAndOut(Exception):
 
 class Arguments(object):
     def __init__(self, args, outer=None):
-        self.args = tuple(args)
-        self.cur = 0
+        self.args = args
         self.outer = outer
+        self.len = len(self.args)
+        self.cur = 0
+        self.empty = (self.len == 0)
 
-    def __len__(self): return len(self.args)
+    def __len__(self): return self.len
     def __getitem__(self, key): return self.args[key]
     def __iter__(self): return self
 
     def next(self):
-        if self.cur == len(self.args):
+        if self.empty:
             raise StopIteration
-        arg = self.args[self.cur]
-        self.cur += 1
+        cur = self.cur
+        arg = self.args[cur]
+        cur += 1
+        self.cur = cur
+        self.empty = (cur == self.len)
         return arg
 
     def prev(self):
-        if self.cur == 0:
+        cur = self.cur
+        if cur == 0:
             raise StopIteration
-        self.cur -= 1
-        arg = self.args[self.cur]
+        cur -= 1
+        arg = self.args[cur]
+        self.cur = cur
+        self.empty = False
         return arg
 
     def peek(self):
         return self.args[self.cur]
 
     def goto(self, n):
-        if n < 0 or n > len(self.args):
+        if n < 0 or n >= self.len:
             raise IndexError("index %d is out of bounds" % n)
         self.cur = n
+        empty = False
 
+    @property
     def remaining(self):
-        return len(self.args) - self.cur
+        return self.len - self.cur
 
 class CharposStream(object):
     """An output stream wrapper that keeps track of character positions
@@ -116,7 +126,7 @@ class Directive(object):
         if n < len(self.params):
             p = self.params[n]
             if p is Directive.variable_parameter: p = args.next()
-            elif p is Directive.remaining_parameter: p = args.remaining()
+            elif p is Directive.remaining_parameter: p = args.remaining
             return p if p is not None else default
         else:
             return default
@@ -292,11 +302,11 @@ class Escape(Directive):
             raise FormatError("too many parameters")
 
     def check_remaining(self, stream, args):
-        if args.remaining() == 0:
+        if args.empty:
             raise UpAndOut()
 
     def check_remaining_outer(self, stream, args):
-        if args.outer.remaining() == 0:
+        if args.outer.empty:
             raise UpUpAndOut()
 
     def check_params(self, stream, args):
@@ -515,16 +525,16 @@ class Iteration(DelimitedDirective):
         max = self.param(0, args, -1)
         body = self.body or tuple(parse_control_string(args.next()))
 
-        outer = args if self.atsign else Arguments(args.next())
-        inner = (lambda args: Arguments(args.next(), args)) if self.colon else \
-                (lambda args: args)
+        args = args if self.atsign else Arguments(args.next())
+        next = (lambda args: Arguments(args.next(), args)) if self.colon else \
+               (lambda args: args)
 
         i = 0
-        while outer.remaining() > 0 or (i == 0 and self.delimiter.colon):
+        while not args.empty or (i == 0 and self.delimiter.colon):
             if i == max: break
             i += 1
             try:
-                apply_directives(stream, body, inner(outer))
+                apply_directives(stream, body, next(args))
             except UpAndOut:
                 continue
             except UpUpAndOut:
