@@ -538,24 +538,26 @@ class Iteration(DelimitedDirective):
         super(Iteration, self).append(x)
 
     def delimited(self):
-        self.body = self.clauses[0]
+        self.body = prepare_directives(self.clauses[0]) if self.clauses[0] \
+                                                        else None
         self.need_charpos = not self.body or \
             any([d.need_charpos for d in self.body if isinstance(d, Directive)])
 
     def format(self, stream, args):
         max = self.param(0, args, -1)
-        body = self.body or tuple(parse_control_string(args.next()))
+        body = self.body or prepare_directives(parse_control_string(args.next()))
 
         args = args if self.atsign else Arguments(args.next())
-        next = (lambda args: Arguments(args.next(), args)) if self.colon else \
-               (lambda args: args)
-
+        next = (lambda args: Arguments(args.next(), args)) if self.colon \
+                                                           else None
+        write = stream.write
         i = 0
         while not args.empty or (i == 0 and self.delimiter.colon):
             if i == max: break
             i += 1
             try:
-                apply_directives(stream, body, next(args))
+                iargs = next(args) if next else args
+                fast_apply_directives(stream, write, body, iargs)
             except UpAndOut:
                 continue
             except UpUpAndOut:
@@ -745,6 +747,18 @@ class Formatter(object):
             args = Arguments(args)
         apply_directives(stream, self.directives, args)
         return args
+
+def prepare_directives(directives):
+    return [(d, True) if isinstance(d, basestring) else (d.format, False) \
+                for d in directives]
+
+def fast_apply_directives(stream, write, directives, args):
+    """Apply a list of prepared directives."""
+    for (x, string) in directives:
+        if string:
+            write(x)
+        else:
+            x(stream, args)
 
 def apply_directives(stream, directives, args):
     for directive in directives:
