@@ -47,8 +47,8 @@ class Arguments(object):
         self.empty = False
         return arg
 
-    def peek(self):
-        return self.args[self.cur]
+    def peek(self, n=0):
+        return self.args[self.cur + n]
 
     def goto(self, n):
         if n < 0 or n >= self.len:
@@ -293,10 +293,18 @@ class Hexadecimal(Numeric):
 class Plural(Directive):
     modifiers_allowed = Modifiers.all
 
+    def __init__(self, *args):
+        def prev(args): return args.peek(-1)
+        def next(args): return args.next()
+        def y(arg): return "y" if arg == 1 else "ies"
+        def s(arg): return "" if arg == 1 else "s"
+
+        super(Plural, self).__init__(*args)
+        self.arg = prev if self.colon else next
+        self.suffix = y if self.atsign else s
+
     def format(self, stream, args):
-        if self.colon: args.prev()
-        stream.write(("y" if args.next() == 1 else "ies") if self.atsign else \
-                     ("" if args.next() == 1 else "s"))
+        stream.write(self.suffix(self.arg(args)))
 
 class Separator(Directive):
     modifiers_allowed = Modifiers.colon
