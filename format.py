@@ -366,12 +366,12 @@ class DelimitedDirective(Directive):
     the class of the closing delimiter.  Instances will have that attribute
     set to the instance of that class actually encountered."""
 
+    delimiter = None
+
     def __init__(self, *args):
         super(DelimitedDirective, self).__init__(*args)
         self.clauses = [[]]
         self.separators = []
-
-    def __getitem__(self, key): return self.clauses[key]
 
     def append(self, x):
         if isinstance(x, Separator):
