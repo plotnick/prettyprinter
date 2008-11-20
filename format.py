@@ -100,9 +100,9 @@ class CharposStream(object):
         return self.stream.getvalue()
 
 class Modifiers:
-    colon = frozenset(":")
-    atsign = frozenset("@")
-    both = frozenset((":@",))
+    colon = frozenset([":"])
+    atsign = frozenset(["@"])
+    both = frozenset([":@"])
     all = colon | atsign | both
 
 class Directive(object):
