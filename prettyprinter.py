@@ -10,15 +10,13 @@ class Token(object):
 class Begin(Token):
     """Begin a logical block."""
 
-    def __init__(self, offset=0, prefix=None):
-        self.offset = offset
+    def __init__(self, prefix=None):
         self.prefix = prefix
 
     def output(self, pp):
         if self.prefix:
             pp.stream.write(self.prefix)
-        pp.printstack.append((pp.space - (self.offset or 0),
-                              self.size <= pp.space))
+        pp.printstack.append((pp.space, self.size <= pp.space))
 
 class End(Token):
     """End a logical block."""
@@ -34,28 +32,36 @@ class End(Token):
             pp.printstack.pop()
 
 class Newline(Token):
-    def __init__(self, offset=0):
-        self.offset = offset
+    pass
 
 class Linear(Newline):
     def output(self, pp):
         (block_offset, fits) = pp.printstack[-1]
         if not fits:
-            pp.space = block_offset - self.offset
+            pp.space = block_offset
             pp.stream.write("\n" + " " * (pp.margin - pp.space))
 
 class Fill(Newline):
     def output(self, pp):
         (block_offset, fits) = pp.printstack[-1]
         if not fits and self.size > pp.space:
-            pp.space = block_offset - self.offset
+            pp.space = block_offset
             pp.stream.write("\n" + " " * (pp.margin - pp.space))
 
 class Mandatory(Newline):
     def output(self, pp):
         (block_offset, fits) = pp.printstack[-1]
-        pp.space = block_offset - self.offset
+        pp.space = block_offset
         pp.stream.write("\n" + " " * (pp.margin - pp.space))
+
+class Indentation(Token):
+    def __init__(self, n=0):
+        self.offset = n
+        self.size = 0
+
+    def output(self, pp):
+        (block_offset, fits) = pp.printstack.pop()
+        pp.printstack.append((block_offset - self.offset, fits))
 
 class String(Token):
     def __init__(self, string, size):
@@ -166,7 +172,7 @@ class PrettyPrinter(object):
             if not stack:
                 self.flush()
 
-    def newline(self, fill=False, mandatory=False, offset=0):
+    def newline(self, fill=False, mandatory=False):
         stack = self.scanstack
         if not stack:
             self.leftotal = self.rightotal = 1
@@ -176,9 +182,9 @@ class PrettyPrinter(object):
             if isinstance(top, Newline):
                 top.size += self.rightotal
                 stack.pop()
-        tok = Mandatory(offset) if mandatory \
-                                else Fill(offset) if fill \
-                                else Linear(offset)
+        tok = Mandatory() if mandatory \
+                          else Fill() if fill \
+                          else Linear()
         tok.size = -self.rightotal
         self.queue.append(tok)
         stack.append(tok)
@@ -202,6 +208,9 @@ class PrettyPrinter(object):
             while self.rightotal - self.leftotal > self.space:
                 stack.popleft().size = 999999   # infinity
                 self.flush()
+
+    def indent(self, n=0):
+        self.queue.append(Indentation(n))
 
     def logical_block(self, list=None, *args, **kwargs):
         return LogicalBlock(self, list, *args, **kwargs)
