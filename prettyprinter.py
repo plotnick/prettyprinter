@@ -13,7 +13,6 @@ class Begin(Token):
     def __init__(self, offset=0, prefix=None):
         self.offset = offset
         self.prefix = prefix
-        self.size = 0
 
     def output(self, pp):
         if self.prefix:
@@ -35,28 +34,28 @@ class End(Token):
             pp.printstack.pop()
 
 class Newline(Token):
-    def __init__(self, mandatory=False, fill=False, offset=0):
-        self.mandatory = mandatory
-        self.fill = fill
+    def __init__(self, offset=0):
         self.offset = offset
 
+class Linear(Newline):
     def output(self, pp):
         (block_offset, fits) = pp.printstack[-1]
-        if self.mandatory:
+        if not fits:
             pp.space = block_offset - self.offset
             pp.stream.write("\n" + " " * (pp.margin - pp.space))
-        elif fits:
-            # Entire block fits; don't break line.
-            pass
-        elif self.fill:
-            # Fill-style (a.k.a. block-style) newline.
-            if self.size > pp.space:
-                pp.space = block_offset - self.offset
-                pp.stream.write("\n" + " " * (pp.margin - pp.space))
-        else:
-            # Linear-style newline.
-            self.space = block_offset - self.offset
+
+class Fill(Newline):
+    def output(self, pp):
+        (block_offset, fits) = pp.printstack[-1]
+        if not fits and self.size > pp.space:
+            pp.space = block_offset - self.offset
             pp.stream.write("\n" + " " * (pp.margin - pp.space))
+
+class Mandatory(Newline):
+    def output(self, pp):
+        (block_offset, fits) = pp.printstack[-1]
+        pp.space = block_offset - self.offset
+        pp.stream.write("\n" + " " * (pp.margin - pp.space))
 
 class String(Token):
     def __init__(self, string, size):
@@ -168,7 +167,7 @@ class PrettyPrinter(object):
             if not stack:
                 self.flush()
 
-    def newline(self, *args, **kwargs):
+    def newline(self, fill=False, mandatory=False, offset=0):
         stack = self.scanstack
         if not stack:
             self.leftotal = self.rightotal = 1
@@ -178,7 +177,9 @@ class PrettyPrinter(object):
             if isinstance(top, Newline):
                 top.size += self.rightotal
                 stack.pop()
-        tok = Newline(*args, **kwargs)
+        tok = Mandatory(offset) if mandatory \
+                                else Fill(offset) if fill \
+                                else Linear(offset)
         tok.size = -self.rightotal
         self.enqueue(tok)
         stack.append(tok)
