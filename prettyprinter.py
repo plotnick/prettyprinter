@@ -116,7 +116,7 @@ class PrettyPrinter(object):
         self.stream = stream
         self.space = self.margin
         self.scanstack = deque()
-        self.printstack = deque()
+        self.printstack = list()
         self.queue = deque()
         self.enqueue = self.queue.append
         self.closed = False
