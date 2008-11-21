@@ -117,8 +117,7 @@ class PrettyPrinter(object):
         self.space = self.margin
         self.scanstack = deque()
         self.printstack = list()
-        self.queue = deque()
-        self.enqueue = self.queue.append
+        self.queue = list()
         self.closed = False
 
     def write(self, obj):
@@ -149,7 +148,7 @@ class PrettyPrinter(object):
             assert not self.queue, "queue should be empty"
         tok = Begin(*args, **kwargs)
         tok.size = -self.rightotal
-        self.enqueue(tok)
+        self.queue.append(tok)
         stack.append(tok)
 
     def end(self, *args, **kwargs):
@@ -158,7 +157,7 @@ class PrettyPrinter(object):
         if not stack:
             tok.output(self)
         else:
-            self.enqueue(tok)
+            self.queue.append(tok)
             top = stack.pop()
             top.size += self.rightotal
             if isinstance(top, Newline) and stack:
@@ -181,7 +180,7 @@ class PrettyPrinter(object):
                                 else Fill(offset) if fill \
                                 else Linear(offset)
         tok.size = -self.rightotal
-        self.enqueue(tok)
+        self.queue.append(tok)
         stack.append(tok)
 
     def string(self, s):
@@ -198,7 +197,7 @@ class PrettyPrinter(object):
                 q.size += l
             else:
                 tok = String(s, l)
-                self.enqueue(tok)
+                self.queue.append(tok)
             self.rightotal += l
             while self.rightotal - self.leftotal > self.space:
                 stack.popleft().size = 999999   # infinity
@@ -210,10 +209,20 @@ class PrettyPrinter(object):
     def flush(self):
         """Output as many queue entries as possible."""
         queue = self.queue
-        while queue and queue[0].size >= 0:
-            q = queue.popleft()
+        i = 0
+        n = len(queue)
+        total = 0
+        while i < n:
+            q = queue[i]
+            size = q.size
+            if size < 0:
+                break
             q.output(self)
-            self.leftotal += q.size
+            total += size
+            i += 1
+        if i > 0:
+            self.queue = queue[i:]
+            self.leftotal += total
 
     def close(self):
         if not self.closed:
