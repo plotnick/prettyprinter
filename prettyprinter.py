@@ -6,62 +6,67 @@ __all__ = ["PrettyPrinter", "pprint"]
 
 class Token(object):
     """Base class for prettyprinter tokens."""
+    size = 0
 
 class Begin(Token):
     """Begin a logical block."""
 
-    def __init__(self, prefix=None):
+    def __init__(self, prefix="", per_line=False):
         self.prefix = prefix
+        self.per_line = per_line
 
     def output(self, pp):
         if self.prefix:
-            pp.stream.write(self.prefix)
-        pp.printstack.append((pp.space, self.size <= pp.space))
+            pp._write(self.prefix)
+        pp.printstack.append(((self.prefix, self.per_line), pp.space,
+                              pp.charpos, self.size <= pp.space))
 
 class End(Token):
     """End a logical block."""
 
-    def __init__(self, suffix=None):
+    def __init__(self, suffix=""):
         self.suffix = suffix
-        self.size = 0
 
     def output(self, pp):
         if self.suffix:
-            pp.stream.write(self.suffix)
-        if pp.printstack:
+            pp._write(self.suffix)
+        try:
             pp.printstack.pop()
+        except IndexError:
+            pass
 
 class Newline(Token):
-    pass
+    def indent(self, pp, n):
+        pp.terpri()
+        pp._write(" " * n)
 
 class Linear(Newline):
     def output(self, pp):
-        (block_offset, fits) = pp.printstack[-1]
+        (offset, fits) = pp.printstack[-1][-2:]
         if not fits:
-            pp.space = block_offset
-            pp.stream.write("\n" + " " * (pp.margin - pp.space))
+            self.indent(pp, offset)
 
 class Fill(Newline):
     def output(self, pp):
-        (block_offset, fits) = pp.printstack[-1]
+        (offset, fits) = pp.printstack[-1][-2:]
         if not fits and self.size > pp.space:
-            pp.space = block_offset
-            pp.stream.write("\n" + " " * (pp.margin - pp.space))
+            self.indent(pp, offset)
 
 class Mandatory(Newline):
     def output(self, pp):
-        (block_offset, fits) = pp.printstack[-1]
-        pp.space = block_offset
-        pp.stream.write("\n" + " " * (pp.margin - pp.space))
+        self.indent(pp, pp.printstack[-1][-2])
 
 class Indentation(Token):
-    def __init__(self, n=0):
-        self.offset = n
-        self.size = 0
+    def __init__(self, offset=0, relative=False):
+        self.offset = offset
+        self.relative = relative
 
     def output(self, pp):
-        (block_offset, fits) = pp.printstack.pop()
-        pp.printstack.append((block_offset - self.offset, fits))
+        ((prefix, per_line), block, offset, fits) = pp.printstack.pop()
+        offset = pp.margin - ((pp.space if self.relative else block) + \
+                                  (len(prefix) if per_line else 0) - \
+                                  self.offset)
+        pp.printstack.append(((prefix, per_line), block, offset, fits))
 
 class String(Token):
     def __init__(self, string, size):
@@ -69,8 +74,7 @@ class String(Token):
         self.size = size
 
     def output(self, pp):
-        pp.stream.write(self.string)
-        pp.space -= self.size
+        pp._write(self.string)
 
 class LogicalBlock(object):
     """A context manager for logical blocks."""
@@ -83,7 +87,7 @@ class LogicalBlock(object):
         self.pp = pp
         self.list = lst
         self.len = len(lst) if lst else 0
-        self.suffix = kwargs.pop("suffix", None)
+        self.suffix = kwargs.pop("suffix", "")
         self.args = args
         self.kwargs = kwargs
 
@@ -113,17 +117,23 @@ class LogicalBlock(object):
             raise StopIteration
 
 class PrettyPrinter(object):
-    def __init__(self, width=80, stream=sys.stdout):
+    def __init__(self, width=80, stream=sys.stdout, charpos=None):
         self.margin = int(width)
         if self.margin <= 0:
             raise ValueError("margin must be positive")
         if not stream:
             raise RuntimeError("prettyprinting to nowhere")
         self.stream = stream
-        self.space = self.margin
+        if charpos is None:
+            try:
+                charpos = stream.charpos
+            except AttributeError:
+                charpos = 0
+        self.space = self.margin - charpos
         self.scanstack = deque()
         self.printstack = list()
         self.queue = list()
+        self.prefix = ""
         self.closed = False
 
     def write(self, obj):
@@ -154,7 +164,9 @@ class PrettyPrinter(object):
             assert not self.queue, "queue should be empty"
         tok = Begin(*args, **kwargs)
         tok.size = -self.rightotal
+        self.prefix = tok.prefix if tok.per_line else ""
         self.queue.append(tok)
+        self.rightotal += len(tok.prefix)
         stack.append(tok)
 
     def end(self, *args, **kwargs):
@@ -164,6 +176,8 @@ class PrettyPrinter(object):
             tok.output(self)
         else:
             self.queue.append(tok)
+            self.rightotal += len(tok.suffix)
+
             top = stack.pop()
             top.size += self.rightotal
             if isinstance(top, Newline) and stack:
@@ -193,8 +207,7 @@ class PrettyPrinter(object):
         l = len(s)
         stack = self.scanstack
         if not stack:
-            self.stream.write(s)
-            self.space -= l
+            self._write(s)
         else:
             q = self.queue[-1]
             if isinstance(q, String):
@@ -209,8 +222,8 @@ class PrettyPrinter(object):
                 stack.popleft().size = 999999   # infinity
                 self.flush()
 
-    def indent(self, n=0):
-        self.queue.append(Indentation(n))
+    def indent(self, *args, **kwargs):
+        self.queue.append(Indentation(*args, **kwargs))
 
     def logical_block(self, list=None, *args, **kwargs):
         return LogicalBlock(self, list, *args, **kwargs)
@@ -239,6 +252,24 @@ class PrettyPrinter(object):
             assert not self.scanstack, "leftover itmes on scan stack"
             assert not self.printstack, "leftover items on print stack"
             self.closed = True
+
+    def _write(self, str):
+        (before, newline, after) = str.partition("\n")
+        self.stream.write(before)
+        if newline:
+            self.terpri()
+            self._write(after)
+        else:
+            self.space -= len(before)
+
+    def terpri(self):
+        prefix = self.prefix
+        self.stream.write("\n" + prefix)
+        self.space = self.margin - (len(prefix) if prefix else 0)
+
+    @property
+    def charpos(self):
+        return self.margin - self.space
 
 def pprint(obj, *args, **kwargs):
     PrettyPrinter(*args, **kwargs).write(obj)
