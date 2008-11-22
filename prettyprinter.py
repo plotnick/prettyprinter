@@ -2,6 +2,7 @@ from __future__ import with_statement
 
 import sys
 from collections import deque
+from charpos import CharposStream
 
 __all__ = ["PrettyPrinter", "pprint"]
 
@@ -113,7 +114,7 @@ class LogicalBlock(object):
         if self.index == self.len:
             raise StopIteration
 
-class PrettyPrinter(object):
+class PrettyPrinter(CharposStream):
     def __init__(self, width=80, stream=sys.stdout, charpos=None):
         self.margin = int(width)
         if self.margin <= 0:
