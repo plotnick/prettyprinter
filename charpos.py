@@ -1,3 +1,8 @@
+import os
+from array import array
+from fcntl import ioctl
+import termios
+
 class CharposStream(object):
     """An output stream wrapper that keeps track of character positions
     relative to the beginning of the current line."""
@@ -36,3 +41,15 @@ class CharposStream(object):
 
     def getvalue(self):
         return self.stream.getvalue()
+
+    @property
+    def output_width(self):
+        if "COLUMNS" in os.environ:
+            return int(os.environ["COLUMNS"])
+        try:
+            fd = self.stream.fileno()
+            winsize = array("H", [0, 0, 0, 0])  # rows, columns, hsize, vsize
+            ioctl(1, termios.TIOCGWINSZ, winsize)
+            return winsize[1] or 80
+        except:
+            return 80

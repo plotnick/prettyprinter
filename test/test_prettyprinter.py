@@ -7,7 +7,7 @@ from prettyprinter import *
 class PrettyPrinterTest(unittest.TestCase):
     def ppEquals(self, result, width, pprint, *args):
         stringstream = StringIO()
-        pp = PrettyPrinter(width, stringstream)
+        pp = PrettyPrinter(stream=stringstream, width=width)
         pprint(pp, *args)
         self.assertEqual(result, stringstream.getvalue())
         pp.close()
@@ -15,7 +15,7 @@ class PrettyPrinterTest(unittest.TestCase):
 
     def ppFormatEquals(self, result, width, control, *args):
         stringstream = StringIO()
-        pp = PrettyPrinter(width, stringstream)
+        pp = PrettyPrinter(stream=stringstream, width=width)
         format(pp, control, *args)
         self.assertEqual(result, stringstream.getvalue())
         pp.close()
