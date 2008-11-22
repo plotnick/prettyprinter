@@ -15,7 +15,7 @@ class CharposStream(object):
     def close(self):
         if not self.closed:
             self.stream.close()
-            self.close = True
+            self.closed = True
 
     def flush(self):
         self.stream.flush()
