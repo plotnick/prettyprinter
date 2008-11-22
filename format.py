@@ -214,9 +214,9 @@ class Write(Directive):
 
     def format(self, stream, args):
         arg = args.next()
-        if isinstance(stream, PrettyPrinter):
-            stream.pprint(arg)
-        else:
+        try:
+            stream.write(arg)
+        except TypeError:
             stream.write(repr(arg))
 
 class Numeric(Directive):
@@ -399,6 +399,12 @@ class ConditionalNewline(Directive):
     def format(self, stream, args):
         stream.newline(mandatory=(self.colon and self.atsign), fill=self.colon)
 
+class Indentation(Directive):
+    modifiers_allowed = Modifiers.colon
+
+    def format(self, stream, args):
+        stream.indent(offset=int(self.param(0, args, 0)), relative=self.colon)
+
 class Tabulate(Directive):
     modifiers_allowed = Modifiers.all
     need_charpos = True
@@ -470,10 +476,9 @@ class Justification(DelimitedDirective):
         if self.delimiter.colon:
             # pprint-logical-block
             if not isinstance(stream, PrettyPrinter):
-                stream = PrettyPrinter(file=stream)
+                stream = PrettyPrinter(stream=stream)
 
             with stream.logical_block(None,
-                                      offset=0,
                                       prefix=str(self.prefix),
                                       suffix=str(self.suffix)):
                 try:
@@ -627,7 +632,7 @@ map(lambda x: register_directive(*x), {
     "A": Aesthetic, "R": Representation, "S": Representation, "W": Write,
     "D": Decimal, "B": Binary, "O": Octal, "X": Hexadecimal,
     "*": Goto,
-    "_": ConditionalNewline,
+    "_": ConditionalNewline, "I": Indentation,
     "T": Tabulate,
     "<": Justification, ">": EndJustification,
     "[": Conditional, "]": EndConditional,
