@@ -1,4 +1,5 @@
 from __future__ import with_statement
+
 import sys
 from collections import deque
 
@@ -80,10 +81,6 @@ class LogicalBlock(object):
     """A context manager for logical blocks."""
 
     def __init__(self, pp, lst, *args, **kwargs):
-        assert isinstance(pp, PrettyPrinter), "not a pretty-printer"
-        assert lst is None or isinstance(lst, (list, tuple)), \
-            "invalid logical block list"
-
         self.pp = pp
         self.list = lst
         self.len = len(lst) if lst else 0
@@ -137,21 +134,47 @@ class PrettyPrinter(object):
         self.closed = False
 
     def write(self, obj):
-        from format import format
-
         if isinstance(obj, basestring):
             self.string(obj)
         elif isinstance(obj, (int, float, long, complex)):
             self.string(str(obj))
         elif isinstance(obj, list):
-            format(self, "~:<~@{~W~^, ~:_~}~:>", obj)
+            with self.logical_block(obj, prefix="[", suffix="]") as l:
+                for x in l:
+                    self.write(x)
+                    l.exit_if_list_exhausted()
+                    self.write(", ")
+                    self.newline(fill=True)
         elif isinstance(obj, tuple):
-            format(self, "~<(~;~W,~^ ~:_~@{~W~^, ~:_~}~;)~:>", obj)
+            with self.logical_block(obj, prefix="(", suffix=")") as l:
+                self.write(l.next())
+                self.write(",")
+                l.exit_if_list_exhausted()
+                self.write(" ")
+                self.newline(fill=True)
+                for x in l:
+                    self.write(x)
+                    l.exit_if_list_exhausted()
+                    self.write(", ")
+                    self.newline(fill=True)
         elif isinstance(obj, (set, frozenset, deque)):
-            format(self, "~A~<([~;~@{~W~^, ~:_~}~;])~:>",
-                   type(obj).__name__, list(obj))
+            with self.logical_block(tuple(obj),
+                                    prefix="%s(" % type(obj).__name__,
+                                    suffix=")") as l:
+                for x in l:
+                    self.write(x)
+                    l.exit_if_list_exhausted()
+                    self.write(", ")
+                    self.newline(fill=True)
         elif isinstance(obj, dict):
-            format(self, "~<{~;~:@{~W: ~W~:^, ~:_~}~;}~:>", obj.items())
+            with self.logical_block(obj.items(), prefix="{", suffix="}") as l:
+                for key, value in l:
+                    self.write(key)
+                    self.write(": ")
+                    self.write(value)
+                    l.exit_if_list_exhausted()
+                    self.write(", ")
+                    self.newline(fill=True)
         elif hasattr(obj, "__pprint__"):
             obj.__pprint__(self)
         else:
@@ -225,8 +248,8 @@ class PrettyPrinter(object):
     def indent(self, *args, **kwargs):
         self.queue.append(Indentation(*args, **kwargs))
 
-    def logical_block(self, list=None, *args, **kwargs):
-        return LogicalBlock(self, list, *args, **kwargs)
+    def logical_block(self, lst=None, *args, **kwargs):
+        return LogicalBlock(self, lst, *args, **kwargs)
 
     def flush(self):
         """Output as many queue entries as possible."""
