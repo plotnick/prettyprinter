@@ -139,52 +139,24 @@ class PrettyPrinter(CharposStream):
         self.prefix = ""
         self.closed = False
 
-    def write(self, obj):
-        if isinstance(obj, basestring):
-            self.string(obj)
-        elif isinstance(obj, (int, float, long, complex)):
-            self.string(str(obj))
-        elif isinstance(obj, list):
-            with self.logical_block(obj, prefix="[", suffix="]") as l:
-                for x in l:
-                    self.write(x)
-                    l.exit_if_list_exhausted()
-                    self.write(", ")
-                    self.newline(fill=True)
-        elif isinstance(obj, tuple):
-            with self.logical_block(obj, prefix="(", suffix=")") as l:
-                self.write(l.next())
-                self.write(",")
-                l.exit_if_list_exhausted()
-                self.write(" ")
-                self.newline(fill=True)
-                for x in l:
-                    self.write(x)
-                    l.exit_if_list_exhausted()
-                    self.write(", ")
-                    self.newline(fill=True)
-        elif isinstance(obj, (set, frozenset, deque)):
-            with self.logical_block(tuple(obj),
-                                    prefix="%s(" % type(obj).__name__,
-                                    suffix=")") as l:
-                for x in l:
-                    self.write(x)
-                    l.exit_if_list_exhausted()
-                    self.write(", ")
-                    self.newline(fill=True)
-        elif isinstance(obj, dict):
-            with self.logical_block(obj.items(), prefix="{", suffix="}") as l:
-                for key, value in l:
-                    self.write(key)
-                    self.write(": ")
-                    self.write(value)
-                    l.exit_if_list_exhausted()
-                    self.write(", ")
-                    self.newline(fill=True)
-        elif hasattr(obj, "__pprint__"):
-            obj.__pprint__(self)
+    def write(self, string):
+        l = len(string)
+        stack = self.scanstack
+        if not stack:
+            self._write(string)
         else:
-            self.string(str(obj))
+            q = self.queue[-1]
+            if isinstance(q, String):
+                # Don't create a seperate token; merge with the last one.
+                q.string += string
+                q.size += l
+            else:
+                tok = String(string, l)
+                self.queue.append(tok)
+            self.rightotal += l
+            while self.rightotal - self.leftotal > self.space:
+                stack.popleft().size = 999999   # infinity
+                self.flush()
 
     def begin(self, *args, **kwargs):
         stack = self.scanstack
@@ -232,30 +204,56 @@ class PrettyPrinter(CharposStream):
         self.queue.append(tok)
         stack.append(tok)
 
-    def string(self, s):
-        l = len(s)
-        stack = self.scanstack
-        if not stack:
-            self._write(s)
-        else:
-            q = self.queue[-1]
-            if isinstance(q, String):
-                # Don't create a seperate token; merge with the last one.
-                q.string += s
-                q.size += l
-            else:
-                tok = String(s, l)
-                self.queue.append(tok)
-            self.rightotal += l
-            while self.rightotal - self.leftotal > self.space:
-                stack.popleft().size = 999999   # infinity
-                self.flush()
-
     def indent(self, *args, **kwargs):
         self.queue.append(Indentation(*args, **kwargs))
 
     def logical_block(self, lst=None, *args, **kwargs):
         return LogicalBlock(self, lst, *args, **kwargs)
+
+    def pprint(self, obj):
+        if isinstance(obj, (basestring, int, float, long, complex)):
+            self.write(repr(obj))
+        elif isinstance(obj, list):
+            with self.logical_block(obj, prefix="[", suffix="]") as l:
+                for x in l:
+                    self.pprint(x)
+                    l.exit_if_list_exhausted()
+                    self.write(", ")
+                    self.newline(fill=True)
+        elif isinstance(obj, tuple):
+            with self.logical_block(obj, prefix="(", suffix=")") as l:
+                self.pprint(l.next())
+                self.write(",")
+                l.exit_if_list_exhausted()
+                self.write(" ")
+                self.newline(fill=True)
+                for x in l:
+                    self.pprint(x)
+                    l.exit_if_list_exhausted()
+                    self.write(", ")
+                    self.newline(fill=True)
+        elif isinstance(obj, (set, frozenset, deque)):
+            with self.logical_block(tuple(obj),
+                                    prefix="%s([" % type(obj).__name__,
+                                    suffix="])") as l:
+                for x in l:
+                    self.pprint(x)
+                    l.exit_if_list_exhausted()
+                    self.write(", ")
+                    self.newline(fill=True)
+        elif isinstance(obj, dict):
+            with self.logical_block(obj.items(), prefix="{", suffix="}") as l:
+                for key, value in l:
+                    self.pprint(key)
+                    self.write(": ")
+                    self.pprint(value)
+                    l.exit_if_list_exhausted()
+                    self.write(", ")
+                    self.newline(fill=True)
+        elif hasattr(obj, "__pprint__"):
+            obj.__pprint__(self)
+        else:
+            self.write(repr(obj))
 
     def flush(self):
         """Output as many queue entries as possible."""
@@ -282,15 +280,6 @@ class PrettyPrinter(CharposStream):
             assert not self.printstack, "leftover items on print stack"
             self.closed = True
 
-    def _write(self, str):
-        (before, newline, after) = str.partition("\n")
-        self.stream.write(before)
-        if newline:
-            self.terpri()
-            self._write(after)
-        else:
-            self.space -= len(before)
-
     def terpri(self):
         prefix = self.prefix
         self.stream.write("\n" + prefix)
@@ -300,8 +289,17 @@ class PrettyPrinter(CharposStream):
     def charpos(self):
         return self.margin - self.space
 
+    def _write(self, str):
+        (before, newline, after) = str.partition("\n")
+        self.stream.write(before)
+        if newline:
+            self.terpri()
+            self._write(after)
+        else:
+            self.space -= len(before)
+
 def pprint(obj, *args, **kwargs):
     pp = PrettyPrinter(*args, **kwargs)
-    pp.write(obj)
+    pp.pprint(obj)
     pp.terpri()
     pp.close()

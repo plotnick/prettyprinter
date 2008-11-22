@@ -177,8 +177,8 @@ class Write(Directive):
     def format(self, stream, args):
         arg = args.next()
         try:
-            stream.write(arg)
-        except TypeError:
+            stream.pprint(arg)
+        except AttributeError:
             stream.write(repr(arg))
 
 class Numeric(Directive):
