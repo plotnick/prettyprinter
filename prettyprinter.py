@@ -301,4 +301,7 @@ class PrettyPrinter(CharposStream):
         return self.margin - self.space
 
 def pprint(obj, *args, **kwargs):
-    PrettyPrinter(*args, **kwargs).write(obj)
+    pp = PrettyPrinter(*args, **kwargs)
+    pp.write(obj)
+    pp.terpri()
+    pp.close()
