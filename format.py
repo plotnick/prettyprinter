@@ -144,6 +144,9 @@ class FreshLine(Directive):
             except AttributeError:
                 stream.write("\n" * n)                    
 
+class Page(ConstantChar):
+    character = "\f"
+
 class Tilde(ConstantChar):
     character = "~"
 
@@ -590,7 +593,7 @@ def register_directive(char, cls):
     format_directives[char.upper()] = format_directives[char.lower()] = cls
 
 map(lambda x: register_directive(*x), {
-    "%": Newline, "&": FreshLine, "~": Tilde,
+    "%": Newline, "&": FreshLine, "|": Page, "~": Tilde,
     "A": Aesthetic, "R": Representation, "S": Representation, "W": Write,
     "D": Decimal, "B": Binary, "O": Octal, "X": Hexadecimal,
     "*": Goto,
