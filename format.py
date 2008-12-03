@@ -409,7 +409,7 @@ class Hexadecimal(Numeric):
     radix = 16
 
     def convert(self, n, radix):
-        return "%x" % n
+        return "%X" % n
 
 class Plural(Directive):
     modifiers_allowed = Modifiers.all
