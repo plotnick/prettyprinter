@@ -81,6 +81,7 @@ class Directive(object):
     variable_parameter = object()
     remaining_parameter = object()
     modifiers_allowed = None
+    parameters_allowed = 0
     need_charpos = False
 
     def __init__(self, params, colon, atsign, control, start, end, parent=None):
@@ -93,6 +94,8 @@ class Directive(object):
             raise FormatError("colon not allowed for this directive")
         elif atsign and "@" not in self.modifiers_allowed:
             raise FormatError("at-sign not allowed for this directive")
+        if len(params) > self.parameters_allowed:
+            raise FormatError("too many parameters for this directive")
 
         self.params = params; self.colon = colon; self.atsign = atsign
         self.control = control; self.start = start; self.end = end
@@ -165,6 +168,9 @@ class ConstantChar(Directive):
     """Directives that produce strings consisting of some number of copies of
     a constant character may, if the parameter is not * or #, be optimized by
     producing the strings directly, rather than a Directive instance."""
+
+    modifiers_allowed = None
+    parameters_allowed = 1
 
     def __new__(cls, params, colon, atsign, *args):
         if colon or atsign:
@@ -328,6 +334,7 @@ class Numeric(Directive):
     """Base class for numeric (radix control) directives."""
 
     modifiers_allowed = Modifiers.all
+    parameters_allowed = 4
 
     def format(self, stream, args):
         def commafy(s, commachar, comma_interval):
@@ -382,6 +389,7 @@ class Numeric(Directive):
         stream.write((sign + s).rjust(mincol, padchar))
 
 class Radix(Numeric):
+    parameters_allowed = 5
     radix = None
 
     def __init__(self, *args):
@@ -434,6 +442,7 @@ class Hexadecimal(Numeric):
 
 class Aesthetic(Directive):
     modifiers_allowed = Modifiers.all
+    parameters_allowed = 4
 
     def format(self, stream, args):
         mincol = self.param(0, args, 0)
@@ -512,6 +521,7 @@ class LogicalBlock(DelimitedDirective):
 
 class Indentation(Directive):
     modifiers_allowed = Modifiers.colon
+    parameters_allowed = 1
 
     def format(self, stream, args):
         stream.indent(offset=int(self.param(0, args, 0)), relative=self.colon)
@@ -520,6 +530,7 @@ class Indentation(Directive):
 
 class Tabulate(Directive):
     modifiers_allowed = Modifiers.all
+    parameters_allowed = 2
     need_charpos = True
 
     def format(self, stream, args):
@@ -578,6 +589,7 @@ class Justification(DelimitedDirective):
 
 class GoTo(Directive):
     modifiers_allowed = Modifiers.all
+    parameters_allowed = 1
 
     def format(self, stream, args):
         if self.atsign:
@@ -592,6 +604,7 @@ class EndConditional(Directive):
 
 class Conditional(DelimitedDirective):
     modifiers_allowed = Modifiers.all
+    parameters_allowed = 1
     delimiter = EndConditional
 
     def delimited(self):
@@ -639,6 +652,7 @@ class EndIteration(Directive):
 
 class Iteration(DelimitedDirective):
     modifiers_allowed = Modifiers.all
+    parameters_allowed = 1
     delimiter = EndIteration
 
     def append(self, x):
@@ -741,6 +755,7 @@ class Separator(Directive):
 
 class Escape(Directive):
     modifiers_allowed = Modifiers.colon
+    parameters_allowed = 3
 
     def __init__(self, *args):
         super(Escape, self).__init__(*args)
