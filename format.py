@@ -2,7 +2,7 @@ from __future__ import with_statement
 
 import sys
 from cStringIO import StringIO
-from math import floor, log10
+from math import log10
 from charpos import CharposStream
 from prettyprinter import PrettyPrinter
 
