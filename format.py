@@ -181,7 +181,7 @@ class FreshLine(Directive):
                     stream.terpri()
                     n -= 1
             except AttributeError:
-                stream.write("\n" * n)                    
+                stream.write("\n" * n)
 
 class Page(ConstantChar):
     character = "\f"
