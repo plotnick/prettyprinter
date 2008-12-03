@@ -61,7 +61,7 @@ class Arguments(object):
         if n < 0 or n >= self.len:
             raise IndexError("index %d is out of bounds" % n)
         self.cur = n
-        empty = False
+        self.empty = False
 
     @property
     def remaining(self):
@@ -583,9 +583,9 @@ class GoTo(Directive):
         if self.atsign:
             args.goto(self.param(0, args, 0))
         else:
+            ignore = args.prev if self.colon else args.next
             for i in range(self.param(0, args, 1)):
-                if self.colon: args.prev()
-                else: args.next()
+                ignore()
 
 class EndConditional(Directive):
     pass

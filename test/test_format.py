@@ -40,6 +40,13 @@ class FormatTest(unittest.TestCase):
         self.formatEquals("foobar  foo", "foobar~2,8@Tfoo")
         self.formatEquals("foobar          foo", "foobar~3,8@Tfoo")
 
+    def testGoTo(self):
+        self.formatEquals("2", "~*~S", 1, 2)
+        self.formatEquals("3", "~2*~S", 1, 2, 3)
+        self.formatEquals("122", "~S~S~:*~S", 1, 2)
+        self.formatEquals("1231", "~S~S~S~3:*~S", 1, 2, 3)
+        self.formatEquals("1231", "~S~S~S~@*~S", 1, 2, 3)
+
     def testConditional(self):
         self.formatEquals("Zero", "~0[Zero~;One~:;Other~]")
         self.formatEquals("One", "~1[Zero~;One~:;Other~]")
