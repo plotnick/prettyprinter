@@ -111,6 +111,44 @@ class Directive(object):
             parent = parent.parent
         return None
 
+class DelimitedDirective(Directive):
+    """Delimited directives, such as conditional expressions and
+    justifications, are composed of an opening delimiter, zero or more
+    clauses separated by a separator, and a closing delimiter.
+
+    Subclasses should define a class attribute, delimiter, that specifies
+    the class of the closing delimiter.  Instances will have that attribute
+    set to the instance of that class actually encountered."""
+
+    delimiter = None
+
+    def __init__(self, *args):
+        super(DelimitedDirective, self).__init__(*args)
+        self.clauses = [[]]
+        self.separators = []
+
+    def append(self, x):
+        if isinstance(x, Separator):
+            self.separators.append(x)
+            self.clauses.append([])
+        elif isinstance(x, self.delimiter):
+            self.delimiter = x
+            self.delimited()
+        else:
+            self.clauses[len(self.separators)].append(x)
+        self.end = x.end if isinstance(x, Directive) else (self.end + len(x))
+
+    def delimited(self):
+        """Called when the complete directive, including the delimiter, has
+        been parsed."""
+
+        # Most delimited directives need charpos if any of their clauses do.
+        self.need_charpos = any([d.need_charpos for c in self.clauses \
+                                                for d in c \
+                                     if isinstance(d, Directive)])
+
+# Basic Output
+
 class ConstantChar(Directive):
     def __new__(cls, params, colon, atsign, *args):
         if colon or atsign:
@@ -150,40 +188,8 @@ class Page(ConstantChar):
 
 class Tilde(ConstantChar):
     character = "~"
-
-class Aesthetic(Directive):
-    modifiers_allowed = Modifiers.all
-
-    def format(self, stream, args):
-        mincol = self.param(0, args, 0)
-        colinc = self.param(1, args, 1)
-        minpad = self.param(2, args, 0)
-        padchar = self.param(3, args, " ")
-
-        # The string methods l/rjust don't support a colinc or minpad.
-        if colinc != 1: raise FormatError("colinc parameter must be 1")
-        if minpad != 0: raise FormatError("minpad parameter must be 0")
-
-        a = args.next()
-        s = "[]" if self.colon and a is None else str(a)
-        stream.write(s.rjust(mincol, padchar) if self.atsign else \
-                     s.ljust(mincol, padchar))
-
-class Representation(Directive):
-    modifiers_allowed = Modifiers.all
-
-    def format(self, stream, args):
-        stream.write(repr(args.next()))
-
-class Write(Directive):
-    modifiers_allowed = Modifiers.all
-
-    def format(self, stream, args):
-        arg = args.next()
-        try:
-            stream.pprint(arg)
-        except AttributeError:
-            stream.write(repr(arg))
+
+# Radix Control
 
 digits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
@@ -410,109 +416,44 @@ class Hexadecimal(Numeric):
 
     def convert(self, n, radix):
         return "%X" % n
+
+# Printer Operations
 
-class Plural(Directive):
-    modifiers_allowed = Modifiers.all
-
-    def __init__(self, *args):
-        def prev(args): return args.peek(-1)
-        def next(args): return args.next()
-        def y(arg): return "y" if arg == 1 else "ies"
-        def s(arg): return "" if arg == 1 else "s"
-
-        super(Plural, self).__init__(*args)
-        self.arg = prev if self.colon else next
-        self.suffix = y if self.atsign else s
-
-    def format(self, stream, args):
-        stream.write(self.suffix(self.arg(args)))
-
-class Separator(Directive):
-    modifiers_allowed = Modifiers.colon
-
-class Escape(Directive):
-    modifiers_allowed = Modifiers.colon
-
-    def __init__(self, *args):
-        super(Escape, self).__init__(*args)
-
-        if self.colon:
-            iteration = self.governed_by(Iteration)
-            if not (iteration and iteration.colon):
-                raise FormatError("can't have ~~:^ outside of a "
-                                  "~~:{...~~} construct")
-        self.exception = UpUpAndOut if self.colon else UpAndOut
-
-        if len(self.params) == 0:
-            self.format = self.check_remaining_outer if self.colon \
-                                                     else self.check_remaining
-        elif len(self.params) in (1, 2, 3):
-            self.format = self.check_params
-        else:
-            raise FormatError("too many parameters")
-
-    def check_remaining(self, stream, args):
-        if args.empty:
-            raise UpAndOut()
-
-    def check_remaining_outer(self, stream, args):
-        if args.outer.empty:
-            raise UpUpAndOut()
-
-    def check_params(self, stream, args):
-        # This could be split up, too.
-        (param1, param2, param3) = (self.param(i, args) for i in range(3))
-        if (param3 is not None and param1 <= param2 and param2 <= param3) or \
-           (param2 is not None and param1 == param2) or \
-           (param1 is not None and param1 == 0):
-            raise self.exception()
-
-class Goto(Directive):
+class Aesthetic(Directive):
     modifiers_allowed = Modifiers.all
 
     def format(self, stream, args):
-        if self.atsign:
-            args.goto(self.param(0, args, 0))
-        else:
-            for i in range(self.param(0, args, 1)):
-                if self.colon: args.prev()
-                else: args.next()
+        mincol = self.param(0, args, 0)
+        colinc = self.param(1, args, 1)
+        minpad = self.param(2, args, 0)
+        padchar = self.param(3, args, " ")
 
-class DelimitedDirective(Directive):
-    """Delimited directives, such as conditional expressions and
-    justifications, are composed of an opening delimiter, zero or more
-    clauses separated by a separator, and a closing delimiter.
+        # The string methods l/rjust don't support a colinc or minpad.
+        if colinc != 1: raise FormatError("colinc parameter must be 1")
+        if minpad != 0: raise FormatError("minpad parameter must be 0")
 
-    Subclasses should define a class attribute, delimiter, that specifies
-    the class of the closing delimiter.  Instances will have that attribute
-    set to the instance of that class actually encountered."""
+        a = args.next()
+        s = "[]" if self.colon and a is None else str(a)
+        stream.write(s.rjust(mincol, padchar) if self.atsign else \
+                     s.ljust(mincol, padchar))
 
-    delimiter = None
+class Standard(Directive):
+    modifiers_allowed = Modifiers.all
 
-    def __init__(self, *args):
-        super(DelimitedDirective, self).__init__(*args)
-        self.clauses = [[]]
-        self.separators = []
+    def format(self, stream, args):
+        stream.write(repr(args.next()))
 
-    def append(self, x):
-        if isinstance(x, Separator):
-            self.separators.append(x)
-            self.clauses.append([])
-        elif isinstance(x, self.delimiter):
-            self.delimiter = x
-            self.delimited()
-        else:
-            self.clauses[len(self.separators)].append(x)
-        self.end = x.end if isinstance(x, Directive) else (self.end + len(x))
+class Write(Directive):
+    modifiers_allowed = Modifiers.all
 
-    def delimited(self):
-        """Called when the complete directive, including the delimiter, has
-        been parsed."""
-
-        # Most delimited directives need charpos if any of their clauses do.
-        self.need_charpos = any([d.need_charpos for c in self.clauses \
-                                                for d in c \
-                                     if isinstance(d, Directive)])
+    def format(self, stream, args):
+        arg = args.next()
+        try:
+            stream.pprint(arg)
+        except AttributeError:
+            stream.write(repr(arg))
+
+# Pretty Printer Operations
 
 class ConditionalNewline(Directive):
     modifiers_allowed = Modifiers.all
@@ -520,11 +461,49 @@ class ConditionalNewline(Directive):
     def format(self, stream, args):
         stream.newline(mandatory=(self.colon and self.atsign), fill=self.colon)
 
+class LogicalBlock(DelimitedDirective):
+    # NOTE: Instances of this class are never created directly; the
+    # delimiter method of the Justification class changes the class
+    # of instances delimited with "~:>".
+
+    def delimited(self):
+        super(LogicalBlock, self).delimited()
+
+        # Note: with the colon modifier, the prefix & suffix default to
+        # square, not round brackets; this is Python, not Lisp.
+        self.prefix = "[" if self.colon else ""
+        self.suffix = "]" if self.colon else ""
+        if len(self.clauses) == 0:
+            self.body = []
+        elif len(self.clauses) == 1:
+            (self.body,) = self.clauses
+        elif len(self.clauses) == 2:
+            ((self.prefix,), self.body) = self.clauses
+        elif len(self.clauses) == 3:
+            ((self.prefix,), self.body, (self.suffix,)) = self.clauses
+        else:
+            raise FormatError("too many segments for ~~<...~~:>")
+
+    def format(self, stream, args):
+        if not isinstance(stream, PrettyPrinter):
+            stream = PrettyPrinter(stream=stream)
+        with stream.logical_block(None,
+                                  prefix=str(self.prefix),
+                                  suffix=str(self.suffix)):
+            try:
+                apply_directives(stream,
+                                 self.body,
+                                 args if self.atsign else Arguments(args.next()))
+            except UpAndOut:
+                pass
+
 class Indentation(Directive):
     modifiers_allowed = Modifiers.colon
 
     def format(self, stream, args):
         stream.indent(offset=int(self.param(0, args, 0)), relative=self.colon)
+
+# Layout Control
 
 class Tabulate(Directive):
     modifiers_allowed = Modifiers.all
@@ -568,49 +547,32 @@ class EndJustification(Directive):
     modifiers_allowed = Modifiers.colon
 
 class Justification(DelimitedDirective):
-    """This class actually implements two essentially unrelated format
-    directives: justification (~<...~>) and pprint-logical-block (~<...~:>).
-    Blame Dick Waters."""
-
     modifiers_allowed = Modifiers.all
     delimiter = EndJustification
 
     def delimited(self):
-        super(Justification, self).delimited()
-
-        # Note: with the colon modifier, the prefix & suffix default to
-        # square, not round brackets; this is Python, not Lisp.
-        self.prefix = "[" if self.colon else ""
-        self.suffix = "]" if self.colon else ""
-        if len(self.clauses) == 0:
-            self.body = []
-        elif len(self.clauses) == 1:
-            (self.body,) = self.clauses
-        elif len(self.clauses) == 2:
-            ((self.prefix,), self.body) = self.clauses
-        elif len(self.clauses) == 3:
-            ((self.prefix,), self.body, (self.suffix,)) = self.clauses
+        if self.delimiter.colon:
+            # Blame Dick Waters.
+            self.__class__ = LogicalBlock
+            self.delimited()
         else:
-            raise FormatError("too many segments for ~~<...~~:>")
+            super(Justification, self).delimited()
 
     def format(self, stream, args):
-        if self.delimiter.colon:
-            # pprint-logical-block
-            if not isinstance(stream, PrettyPrinter):
-                stream = PrettyPrinter(stream=stream)
+        raise FormatError("justification not yet implemented")
+
+# Control-Flow Operations
 
-            with stream.logical_block(None,
-                                      prefix=str(self.prefix),
-                                      suffix=str(self.suffix)):
-                try:
-                    apply_directives(stream,
-                                     self.body,
-                                     args if self.atsign \
-                                          else Arguments(args.next()))
-                except UpAndOut:
-                    pass
+class GoTo(Directive):
+    modifiers_allowed = Modifiers.all
+
+    def format(self, stream, args):
+        if self.atsign:
+            args.goto(self.param(0, args, 0))
         else:
-            raise FormatError("justification not yet implemented")
+            for i in range(self.param(0, args, 1)):
+                if self.colon: args.prev()
+                else: args.next()
 
 class EndConditional(Directive):
     pass
@@ -705,6 +667,8 @@ class Recursive(Directive):
         apply_directives(stream,
                          parse_control_string(args.next()),
                          args if self.atsign else Arguments(args.next()))
+
+# Miscellaneous Operations
 
 class EndCaseConversion(Directive):
     pass
@@ -741,6 +705,64 @@ class CaseConversion(DelimitedDirective):
         else:
             stream.write(string.lower())
 
+class Plural(Directive):
+    modifiers_allowed = Modifiers.all
+
+    def __init__(self, *args):
+        def prev(args): return args.peek(-1)
+        def next(args): return args.next()
+        def y(arg): return "y" if arg == 1 else "ies"
+        def s(arg): return "" if arg == 1 else "s"
+
+        super(Plural, self).__init__(*args)
+        self.arg = prev if self.colon else next
+        self.suffix = y if self.atsign else s
+
+    def format(self, stream, args):
+        stream.write(self.suffix(self.arg(args)))
+
+# Miscellaneous Pseudo-Operations
+
+class Separator(Directive):
+    modifiers_allowed = Modifiers.colon
+
+class Escape(Directive):
+    modifiers_allowed = Modifiers.colon
+
+    def __init__(self, *args):
+        super(Escape, self).__init__(*args)
+
+        if self.colon:
+            iteration = self.governed_by(Iteration)
+            if not (iteration and iteration.colon):
+                raise FormatError("can't have ~~:^ outside of a "
+                                  "~~:{...~~} construct")
+        self.exception = UpUpAndOut if self.colon else UpAndOut
+
+        if len(self.params) == 0:
+            self.format = self.check_remaining_outer if self.colon \
+                                                     else self.check_remaining
+        elif len(self.params) in (1, 2, 3):
+            self.format = self.check_params
+        else:
+            raise FormatError("too many parameters")
+
+    def check_remaining(self, stream, args):
+        if args.empty:
+            raise UpAndOut()
+
+    def check_remaining_outer(self, stream, args):
+        if args.outer.empty:
+            raise UpUpAndOut()
+
+    def check_params(self, stream, args):
+        # This could be split up, too.
+        (param1, param2, param3) = (self.param(i, args) for i in range(3))
+        if (param3 is not None and param1 <= param2 and param2 <= param3) or \
+           (param2 is not None and param1 == param2) or \
+           (param1 is not None and param1 == 0):
+            raise self.exception()
+
 format_directives = dict()
 def register_directive(char, cls):
     assert len(char) == 1, "only single-character directives allowed"
@@ -750,15 +772,12 @@ def register_directive(char, cls):
 
 map(lambda x: register_directive(*x), {
     "%": Newline, "&": FreshLine, "|": Page, "~": Tilde,
-    "A": Aesthetic, "S": Representation, "W": Write,
     "R": Radix, "D": Decimal, "B": Binary, "O": Octal, "X": Hexadecimal,
-    "*": Goto,
+    "A": Aesthetic, "S": Standard, "W": Write,
     "_": ConditionalNewline, "I": Indentation,
-    "T": Tabulate,
-    "<": Justification, ">": EndJustification,
-    "[": Conditional, "]": EndConditional,
-    "{": Iteration, "}": EndIteration,
-    "?": Recursive,
+    "T": Tabulate, "<": Justification, ">": EndJustification,
+    "*": GoTo, "[": Conditional, "]": EndConditional,
+    "{": Iteration, "}": EndIteration, "?": Recursive,
     "(": CaseConversion, ")": EndCaseConversion, "P": Plural,
      ";": Separator, "^": Escape,
 }.items())
