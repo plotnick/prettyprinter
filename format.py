@@ -11,7 +11,19 @@ from prettyprinter import PrettyPrinter
 __all__ = ["Formatter", "format"]
 
 class FormatError(StandardError):
-    pass
+    def __init__(self, control, *args):
+        self.control = control
+        self.args = args
+
+    def __str__(self):
+        return format(None, self.control, *self.args)
+
+class FormatParseError(FormatError):
+    offset = 2
+    def __init__(self, control, index, message, *args):
+        super(FormatParseError, self).__init__("~?~%~V@T\"~A\"~%~V@T^",
+                                               message, args, self.offset,
+                                               control, index + self.offset)
 
 class UpAndOut(Exception):
     pass
@@ -95,7 +107,8 @@ class Directive(object):
         elif atsign and "@" not in self.modifiers_allowed:
             raise FormatError("at-sign not allowed for this directive")
         if len(params) > self.parameters_allowed:
-            raise FormatError("too many parameters for this directive")
+            raise FormatError("no more than ~D parameter~:P allowed "
+                              "for this directive", self.parameters_allowed)
 
         self.params = params; self.colon = colon; self.atsign = atsign
         self.control = control; self.start = start; self.end = end
@@ -542,7 +555,7 @@ class Tabulate(Directive):
             stream.write(" " * n)
 
         if self.colon:
-            raise FormatError("%s not yet supported" % self)
+            raise FormatError("~A not yet supported", self)
         elif self.atsign:
             # relative tabulation
             colrel = int(self.param(0, args, 1))
@@ -770,10 +783,8 @@ class Escape(Directive):
         if len(self.params) == 0:
             self.format = self.check_remaining_outer if self.colon \
                                                      else self.check_remaining
-        elif len(self.params) in (1, 2, 3):
-            self.format = self.check_params
         else:
-            raise FormatError("too many parameters")
+            self.format = self.check_params
 
     def check_remaining(self, stream, args):
         if args.empty:
@@ -809,11 +820,6 @@ map(lambda x: register_directive(*x), {
     "(": CaseConversion, ")": EndCaseConversion, "P": Plural,
      ";": Separator, "^": Escape,
 }.items())
-
-def format_error(control, index, message, *args):
-    offset = 2
-    raise FormatError(format(None, "~?~%~V@T\"~A\"~%~V@T^",
-                             message, args, offset, control, index + offset))
 
 def parse_control_string(control, start=0, parent=None):
     """Yield a list of strings and Directive instances corresponding to the
@@ -881,13 +887,15 @@ def parse_control_string(control, start=0, parent=None):
         colon = atsign = False
         while i < end:
             if control[i] == ":":
-                if colon: format_error(control, i, "too many colons")
+                i += 1
+                if colon:
+                    raise FormatParseError(control, i, "too many colons")
                 colon = True
-                i += 1
             elif control[i] == "@":
-                if atsign: format_error(control, i, "too many atsigns")
-                atsign = True
                 i += 1
+                if atsign:
+                    raise FormatParseError(control, i, "too many at-signs")
+                atsign = True
             else:
                 break
 
@@ -897,9 +905,9 @@ def parse_control_string(control, start=0, parent=None):
             d = format_directives[char](params, colon, atsign,
                                         control, tilde, i, parent)
         except FormatError, e:
-            format_error(control, i, e.message)
+            raise FormatParseError(control, i, e.control, *e.args)
         except KeyError:
-            format_error(control, i, "unknown format directive")
+            raise FormatParseError(control, i, "unknown format directive")
         if isinstance(d, DelimitedDirective):
             for x in parse_control_string(control, i, d):
                 try:
@@ -907,7 +915,7 @@ def parse_control_string(control, start=0, parent=None):
                 except FormatError, e:
                     if isinstance(x, Directive) and x is not d.delimiter:
                         i += x.start
-                    format_error(control, i, e.message)
+                    raise FormatParseError(control, i, e.control, *e.args)
             i = d.end
         yield d
         if parent and d is parent.delimiter:
