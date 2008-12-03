@@ -2,6 +2,7 @@ from __future__ import with_statement
 
 import sys
 from cStringIO import StringIO
+from math import floor, log10
 from charpos import CharposStream
 from prettyprinter import PrettyPrinter
 
@@ -184,8 +185,125 @@ class Write(Directive):
         except AttributeError:
             stream.write(repr(arg))
 
+digits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+def convert(n, radix):
+    """Yield the digits of the non-negative number n in the given radix."""
+    def le_digits(n, radix):
+        while n > 0:
+            yield digits[n % radix]
+            n /= radix
+    if radix < 2 or radix > 36:
+        raise ValueError("radix out of range")
+    return reversed(tuple(le_digits(n, radix)))
+
+roman_numerals = ["M", 2, "D", 5, "C", 2, "L", 5, "X", 2, "V", 5, "I"]
+
+def roman_int(n, oldstyle=False):
+    """Yield the Roman numeral representation of n.  This routine is a
+    straightforward translation of the code from section 69 of TeX82, where
+    it is prefaced by the following comment:
+
+        Readers who like puzzles might enjoy trying to figure out how
+        this tricky code works; therefore no explanation will be given.
+        Notice that 1990 yields MCMXC, not MXM.
+
+    The only substantive change to the algorithm is the addition of the
+    old-style flag."""
+    if n < 1 or n > (4999 if oldstyle else 3999):
+        raise ValueError("integer cannot be expressed as Roman numerals")
+
+    # j & k are mysterious indices into roman_numerals;
+    # u & v are mysterious numbers
+    j = 0; v = 1000
+    while True:
+        while n >= v:
+            yield roman_numerals[j]; n -= v
+        if n <= 0: return   # nonpositive input produces no output
+        k = j + 2; u = v / roman_numerals[k - 1]
+        if roman_numerals[k - 1] == 2:
+            k += 2; u /= roman_numerals[k - 1]
+        if n + u >= v and not oldstyle:
+            yield roman_numerals[k]; n += u
+        else:
+            j += 2; v /= roman_numerals[j - 1]
+
+# English ordinal & cardinal conversion code contributed by Richard
+# M. Kreuter <kreuter@progn.net>.
+
+cardinals = ["zero", "one", "two" , "three", "four",
+             "five", "six", "seven", "eight", "nine",
+             "ten", "eleven", "twelve", "thirteen", "fourteen",
+             "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"]
+
+ordinals = ["zeroth", "first", "second", "third", "fourth",
+            "fifth", "sixth", "seventh", "eighth", "ninth",
+            "tenth", "eleventh", "twelfth", "thirteenth", "fourteenth",
+            "fifteenth", "sixteenth", "seventeenth", "eighteenth", "nineteenth"]
+
+tenstems = ["", "ten", "twent", "thirt", "fourt", "fift",
+            "sixt", "sevent", "eight", "ninet"]
+
+ten_cubes = ["", "thousand", "million", "billion", "trillion",
+             "quadrillion", "quintillion", "sextillion", "septillion",
+             "octillion", "nonillion"]
+
+def itoe(n, ordinal):
+    if n < 0:
+        s = "negative "
+        n = abs(n)
+    else:
+        s = ""
+
+    if ordinal:
+        table = ordinals
+        osuff = "th"
+        tsuff0 = "ieth"
+    else:
+        table = cardinals
+        osuff = ""
+        tsuff0 = "y"
+    tsuff1 = "y"
+    if n < 1000:
+        if n >= 100:
+            return s + "%s hundred" % itoc(n/100) + \
+                (osuff if n % 100 == 0 else (" " + itoe(n % 100, ordinal)))
+        else:
+            if n < 20:
+                return s + table[n]
+            else:
+                ones = n % 10
+                return s + tenstems[n/10] + \
+                    (tsuff0 if ones == 0 else (tsuff1 + "-" + table[ones]))
+
+    v = int(log10(n)) / 3
+    u = 1000 ** v
+    while v >= 0:
+        q = n / u
+        if q != 0:
+            s += itoe(q, ordinal and n < 1000)
+            if v >= len(ten_cubes):
+                s += " times ten to the %s power plus" % (itoo(3*v))
+            elif ten_cubes[v]:
+                s += " " + ten_cubes[v]
+            n %= u
+            if n == 0:
+                if v > 0: s += osuff
+            else:
+                if n >= 100 and v < len(ten_cubes): s += ","
+                s += " "
+        v -= 1
+        u /= 1000
+    return s
+
+def itoo(n):
+    return itoe(n, True)
+
+def itoc(n):
+    return itoe(n, False)
+
 class Numeric(Directive):
-    """Base class for decimal, binary, octal, and hex conversion directives."""
+    """Base class for numeric (radix control) directives."""
 
     modifiers_allowed = Modifiers.all
 
@@ -198,13 +316,18 @@ class Numeric(Directive):
                 a.append(s[i:i + comma_interval])
             return commachar.join(a)
 
-        mincol = int(self.param(0, args, 0))
-        padchar = str(self.param(1, args, " "))
-        commachar = str(self.param(2, args, ","))
-        comma_interval = int(self.param(3, args, 3))
+        i = 0
+        if self.radix:
+            radix = self.radix
+        else:
+            radix = int(self.param(0, args, 0)); i += 1
+        mincol = int(self.param(i, args, 0)); i += 1
+        padchar = str(self.param(i, args, " ")); i += 1
+        commachar = str(self.param(i, args, ",")); i += 1
+        comma_interval = int(self.param(i, args, 3)); i += 1
 
         n = args.next()
-        s = self.convert(abs(n))
+        s = self.convert(abs(n), radix)
         sign = ("+" if n >= 0 else "-") if self.atsign else \
                ("-" if n < 0 else "")
         if self.colon:
@@ -236,23 +359,56 @@ class Numeric(Directive):
             s = commafy(s, commachar, comma_interval)
         stream.write((sign + s).rjust(mincol, padchar))
 
+class Radix(Numeric):
+    radix = None
+
+    def __init__(self, *args):
+        super(Radix, self).__init__(*args)
+        if not self.params:
+            self.format = self.old_roman if self.colon and self.atsign \
+                                         else self.roman if self.atsign \
+                                         else self.ordinal if self.colon \
+                                         else self.cardinal
+
+    def convert(self, n, radix):
+        return "".join(convert(n, radix))
+
+    def roman(self, stream, args):
+        stream.write("".join(roman_int(args.next())))
+
+    def old_roman(self, stream, args):
+        stream.write("".join(roman_int(args.next(), True)))
+
+    def ordinal(self, stream, args):
+        stream.write(itoo(args.next()))
+
+    def cardinal(self, stream, args):
+        stream.write(itoc(args.next()))
+
 class Decimal(Numeric):
-    def convert(self, n):
+    radix = 10
+
+    def convert(self, n, radix):
         return "%d" % n
 
 class Binary(Numeric):
-    octal_digits = ("000", "001", "010", "011", "100", "101", "110", "111")
+    radix = 2
+    octal_digits = ["000", "001", "010", "011", "100", "101", "110", "111"]
 
-    def convert(self, n):
+    def convert(self, n, radix):
         return "".join(self.octal_digits[int(digit)] \
                            for digit in "%o" % n).lstrip("0")
 
 class Octal(Numeric):
-    def convert(self, n):
+    radix = 8
+
+    def convert(self, n, radix):
         return "%o" % n
 
 class Hexadecimal(Numeric):
-    def convert(self, n):
+    radix = 16
+
+    def convert(self, n, radix):
         return "%x" % n
 
 class Plural(Directive):
@@ -594,8 +750,8 @@ def register_directive(char, cls):
 
 map(lambda x: register_directive(*x), {
     "%": Newline, "&": FreshLine, "|": Page, "~": Tilde,
-    "A": Aesthetic, "R": Representation, "S": Representation, "W": Write,
-    "D": Decimal, "B": Binary, "O": Octal, "X": Hexadecimal,
+    "A": Aesthetic, "S": Representation, "W": Write,
+    "R": Radix, "D": Decimal, "B": Binary, "O": Octal, "X": Hexadecimal,
     "*": Goto,
     "_": ConditionalNewline, "I": Indentation,
     "T": Tabulate,

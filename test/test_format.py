@@ -13,8 +13,25 @@ class FormatTest(unittest.TestCase):
         self.formatEquals("1 0001", "~,,' ,4:B", 17)
         self.formatEquals("0000 1101 0000 0101", "~19,0,' ,4:B", 3333)
         self.formatEquals("-000 1101 0000 0101", "~19,0,' ,4:B", -3333)
-        #self.formatEquals("1 22", "~3,,,' ,2:R", 17)
+        self.formatEquals("1 22", "~3,,,' ,2:R", 17)
         self.formatEquals("6|55|35", "~,,'|,2:D", 0xFFFF)
+
+    def testRomanNumerals(self):
+        self.formatEquals("IV", "~@R", 4)
+        self.formatEquals("IIII", "~:@R", 4)
+        self.formatEquals("DCCLXVIII", "~@R", 768)
+        self.formatEquals("MCMXC", "~@R", 1990)
+        self.formatRaises(ValueError, "~@R", -1)
+        self.formatRaises(ValueError, "~@R", 4000)
+        self.formatEquals("MMMM", "~:@R", 4000)
+        self.formatRaises(ValueError, "~:@R", 5000)
+
+    def testEnglish(self):
+        self.formatEquals("four", "~R", 4)
+        self.formatEquals("fourth", "~:R", 4)
+        self.formatEquals("ninety", "~R", 90)
+        self.formatEquals("ninetieth", "~:R", 90)
+        self.formatEquals("negative nine hundred ninety-nine nonillion, nine hundred ninety-nine octillion, nine hundred ninety-nine septillion, nine hundred ninety-nine sextillion, nine hundred ninety-nine quintillion, nine hundred ninety-nine quadrillion, nine hundred ninety-nine trillion, nine hundred ninety-nine billion, nine hundred ninety-nine million, nine hundred ninety-nine thousand, nine hundred ninety-nine", "~R", -999999999999999999999999999999999)
 
     def testTabulate(self):
         self.formatEquals(" foo", "~Tfoo")
