@@ -5,6 +5,7 @@ from __future__ import with_statement
 import sys
 from cStringIO import StringIO
 from math import log10
+import unicodedata
 from charpos import CharposStream
 from prettyprinter import PrettyPrinter
 
@@ -176,6 +177,52 @@ class DelimitedDirective(Directive):
                                      if isinstance(d, Directive)])
 
 # Basic Output
+
+ascii_control_chars = {
+    0: ("^@", "nul"),   1: ("^A", "soh"),  2: ("^B", "stx"),  3: ("^C", "etx"),
+    4: ("^D", "eot"),   5: ("^E", "enq"),  6: ("^F", "ack"),  7: ("^G", "bel"),
+    8: ("^H", "bs"),    9: ("\t", "ht"),  10: ("\n", "nl"),  11: ("^K", "vt"),
+   12: ("^L", "np"),   13: ("^M", "cr"),  14: ("^N", "so"),  15: ("^O", "si"),
+   16: ("^P", "dle"),  17: ("^Q", "dc1"), 18: ("^R", "dc2"), 19: ("^S", "dc3"),
+   20: ("^T", "dc4"),  21: ("^U", "nak"), 22: ("^V", "syn"), 23: ("^W", "etb"),
+   24: ("^X", "can"),  25: ("^Y", "em"),  26: ("^Z", "sub"), 27: ("^[", "esc"),
+   28: ("^\\", "fs"),  29: ("^]", "gs"),  30: ("^^", "rs"),  31: ("^_", "us"),
+  127: ("^?", "del")
+}
+
+python_escapes = {
+    "\\": "\\", "\'": "\'", "\a": "a", "\b": "b", "\f": "f", "\n": "n",
+    "\r": "r", "\t": "t", "\v": "v"
+}
+
+class Character(Directive):
+    modifiers_allowed = Modifiers.all
+
+    def format(self, stream, args):
+        char = unicode(args.next())
+        if len(char) != 1:
+            raise TypeError("expected single character")
+        if self.atsign:
+            if char in python_escapes:
+                stream.write('"\\%s"' % python_escapes[char])
+            else:
+                try:
+                    stream.write('u"\\N{%s}"' % unicodedata.name(char))
+                except ValueError:
+                    stream.write(repr(char))
+        else:
+            if unicodedata.category(char).startswith("C"):
+                try:
+                    stream.write(unicodedata.name(char))
+                except ValueError:
+                    code = ord(char)
+                    if code in ascii_control_chars:
+                        i = 1 if self.colon else 0
+                        stream.write(ascii_control_chars[code][i])
+                    else:
+                        raise FormatError("unprintable character")
+            else:
+                stream.write(char)
 
 class ConstantChar(Directive):
     """Directives that produce strings consisting of some number of copies of
@@ -810,7 +857,7 @@ def register_directive(char, cls):
     format_directives[char.upper()] = format_directives[char.lower()] = cls
 
 map(lambda x: register_directive(*x), {
-    "%": Newline, "&": FreshLine, "|": Page, "~": Tilde,
+    "C": Character, "%": Newline, "&": FreshLine, "|": Page, "~": Tilde,
     "R": Radix, "D": Decimal, "B": Binary, "O": Octal, "X": Hexadecimal,
     "A": Aesthetic, "S": Standard, "W": Write,
     "_": ConditionalNewline, "I": Indentation,

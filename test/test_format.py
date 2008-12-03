@@ -8,6 +8,14 @@ class FormatTest(unittest.TestCase):
     def formatRaises(self, exc, control, *args):
         self.assertRaises(exc, format, None, control, *args)
 
+    def testCharacter(self):
+        self.formatEquals("A", "~C", "A")
+        self.formatEquals("\n", "~C", "\n")
+        self.formatEquals("^G", "~C", "\a")
+        self.formatEquals("bel", "~:C", "\a")
+        self.formatEquals('"\\a"', "~@C", "\a")
+        self.formatEquals('u"\\N{SPACE}"', "~@C", " ")
+
     def testRadix(self):
         self.formatEquals("1101", "~,,' ,4:B", 13)
         self.formatEquals("1 0001", "~,,' ,4:B", 17)
