@@ -76,7 +76,7 @@ class Directive(object):
 
     def __init__(self, params, colon, atsign, control, start, end, parent=None):
         if (colon or atsign) and self.modifiers_allowed is None:
-            raise FormatError("neither colon nor atsign allowed "
+            raise FormatError("neither colon nor at-sign allowed "
                               "for this directive")
         elif (colon and atsign) and ":@" not in self.modifiers_allowed:
             raise FormatError("cannot specify both colon and at-sign")
@@ -114,7 +114,7 @@ class Directive(object):
 class ConstantChar(Directive):
     def __new__(cls, params, colon, atsign, *args):
         if colon or atsign:
-            raise FormatError("neither colon nor atsign allowed "
+            raise FormatError("neither colon nor at-sign allowed "
                               "for this directive")
         if not params:
             return cls.character
