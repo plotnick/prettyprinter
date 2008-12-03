@@ -786,7 +786,7 @@ class CaseConversion(DelimitedDirective):
         if self.colon and self.atsign:
             stream.write(string.upper())
         elif self.colon:
-            stream.write(" ".join([s.capitalize() for s in string.split(" ")]))
+            stream.write(string.title())
         elif self.atsign:
             stream.write(string.capitalize())
         else:
