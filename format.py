@@ -226,7 +226,7 @@ class Character(Directive):
 
 class ConstantChar(Directive):
     """Directives that produce strings consisting of some number of copies of
-    a constant character may, if the parameter is not * or #, be optimized by
+    a constant character may, if the parameter is not V or #, be optimized by
     producing the strings directly, rather than a Directive instance."""
 
     modifiers_allowed = None
