@@ -1,3 +1,5 @@
+"""An implementation of Common Lisp's FORMAT."""
+
 from __future__ import with_statement
 
 import sys
@@ -18,6 +20,9 @@ class UpUpAndOut(Exception):
     pass
 
 class Arguments(object):
+    """A container for format arguments.  Essentially a read-only list, but
+    with random-access, bi-directional iterators."""
+
     def __init__(self, args, outer=None):
         self.args = args
         self.outer = outer
@@ -69,6 +74,10 @@ class Modifiers:
     all = colon | atsign | both
 
 class Directive(object):
+    """Base class for all format directives.  The control-string parser creates
+    instances of (subclasses of) this class, which produce appropriately
+    formatted output via their format methods."""
+
     variable_parameter = object()
     remaining_parameter = object()
     modifiers_allowed = None
@@ -92,6 +101,10 @@ class Directive(object):
     def __str__(self): return self.control[self.start:self.end]
     def __len__(self): return self.end - self.start
 
+    def format(self, stream, args):
+        """Output zero or more arguments to stream."""
+        pass
+
     def param(self, n, args, default=None):
         if n < len(self.params):
             p = self.params[n]
@@ -101,7 +114,7 @@ class Directive(object):
         else:
             return default
 
-    def governed_by(self, cls):
+    def governor(self, cls):
         """If an instance of cls appears anywhere in the chain of parents from
         this instance to the root, return that instance, or None otherwise."""
         parent = self.parent
@@ -141,7 +154,6 @@ class DelimitedDirective(Directive):
     def delimited(self):
         """Called when the complete directive, including the delimiter, has
         been parsed."""
-
         # Most delimited directives need charpos if any of their clauses do.
         self.need_charpos = any([d.need_charpos for c in self.clauses \
                                                 for d in c \
@@ -150,6 +162,10 @@ class DelimitedDirective(Directive):
 # Basic Output
 
 class ConstantChar(Directive):
+    """Directives that produce strings consisting of some number of copies of
+    a constant character may, if the parameter is not * or #, be optimized by
+    producing the strings directly, rather than a Directive instance."""
+
     def __new__(cls, params, colon, atsign, *args):
         if colon or atsign:
             raise FormatError("neither colon nor at-sign allowed "
@@ -194,7 +210,7 @@ class Tilde(ConstantChar):
 digits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 def convert(n, radix):
-    """Yield the digits of the non-negative number n in the given radix."""
+    """Yield the digits of the non-negative integer n in the given radix."""
     def le_digits(n, radix):
         while n > 0:
             yield digits[n % radix]
@@ -393,27 +409,24 @@ class Radix(Numeric):
 
 class Decimal(Numeric):
     radix = 10
-
     def convert(self, n, radix):
         return "%d" % n
 
+octal_digits = ["000", "001", "010", "011", "100", "101", "110", "111"]
+
 class Binary(Numeric):
     radix = 2
-    octal_digits = ["000", "001", "010", "011", "100", "101", "110", "111"]
-
     def convert(self, n, radix):
-        return "".join(self.octal_digits[int(digit)] \
+        return "".join(octal_digits[int(digit)] \
                            for digit in "%o" % n).lstrip("0")
 
 class Octal(Numeric):
     radix = 8
-
     def convert(self, n, radix):
         return "%o" % n
 
 class Hexadecimal(Numeric):
     radix = 16
-
     def convert(self, n, radix):
         return "%X" % n
 
@@ -469,7 +482,7 @@ class LogicalBlock(DelimitedDirective):
     def delimited(self):
         super(LogicalBlock, self).delimited()
 
-        # Note: with the colon modifier, the prefix & suffix default to
+        # NOTE: with the colon modifier, the prefix & suffix default to
         # square, not round brackets; this is Python, not Lisp.
         self.prefix = "[" if self.colon else ""
         self.suffix = "]" if self.colon else ""
@@ -559,7 +572,7 @@ class Justification(DelimitedDirective):
             super(Justification, self).delimited()
 
     def format(self, stream, args):
-        raise FormatError("justification not yet implemented")
+        raise FormatError("justification not yet supported")
 
 # Control-Flow Operations
 
@@ -733,7 +746,7 @@ class Escape(Directive):
         super(Escape, self).__init__(*args)
 
         if self.colon:
-            iteration = self.governed_by(Iteration)
+            iteration = self.governor(Iteration)
             if not (iteration and iteration.colon):
                 raise FormatError("can't have ~~:^ outside of a "
                                   "~~:{...~~} construct")
@@ -764,10 +777,10 @@ class Escape(Directive):
             raise self.exception()
 
 format_directives = dict()
+
 def register_directive(char, cls):
     assert len(char) == 1, "only single-character directives allowed"
     assert issubclass(cls, Directive), "invalid format directive class"
-
     format_directives[char.upper()] = format_directives[char.lower()] = cls
 
 map(lambda x: register_directive(*x), {
@@ -788,6 +801,9 @@ def format_error(control, index, message, *args):
                              message, args, offset, control, index + offset))
 
 def parse_control_string(control, start=0, parent=None):
+    """Yield a list of strings and Directive instances corresponding to the
+    given control string."""
+
     assert isinstance(control, basestring), "control string must be a string"
     assert start >= 0, "can't start parsing from end"
 
