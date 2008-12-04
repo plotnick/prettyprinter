@@ -14,13 +14,14 @@ class CharposStream(object):
 
     def close(self):
         if not self.closed:
-            self.stream.close()
             self.closed = True
 
     def flush(self):
+        assert not self.closed, "I/O operation on closed stream"
         self.stream.flush()
 
     def write(self, str):
+        assert not self.closed, "I/O operation on closed stream"
         newline = str.rfind("\n")
         if newline == -1:
             self.charpos += len(str)
@@ -29,10 +30,12 @@ class CharposStream(object):
         self.stream.write(str)
 
     def terpri(self):
+        assert not self.closed, "I/O operation on closed stream"
         self.stream.write("\n")
         self.charpos = 0
 
     def fresh_line(self):
+        assert not self.closed, "I/O operation on closed stream"
         if self.charpos > 0:
             self.terpri()
             return True
@@ -40,10 +43,12 @@ class CharposStream(object):
             return False
 
     def getvalue(self):
+        assert not self.closed, "I/O operation on closed stream"
         return self.stream.getvalue()
 
     @property
     def output_width(self):
+        assert not self.closed, "I/O operation on closed stream"
         if "COLUMNS" in os.environ:
             return int(os.environ["COLUMNS"])
         try:

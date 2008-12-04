@@ -123,6 +123,7 @@ class PrettyPrinter(CharposStream):
         if not stream:
             raise RuntimeError("pretty-printing to nowhere")
         self.stream = stream
+        self.closed = False
         self.margin = self.output_width if width is None else int(width)
         if self.margin <= 0:
             raise ValueError("margin must be positive")
@@ -137,9 +138,9 @@ class PrettyPrinter(CharposStream):
         self.printstack = list()
         self.queue = list()
         self.prefix = ""
-        self.closed = False
 
     def write(self, string):
+        assert not self.closed, "I/O operation on closed stream"
         l = len(string)
         stack = self.scanstack
         if not stack:
@@ -159,6 +160,7 @@ class PrettyPrinter(CharposStream):
                 self.flush()
 
     def begin(self, *args, **kwargs):
+        assert not self.closed, "I/O operation on closed stream"
         stack = self.scanstack
         if not stack:
             self.leftotal = self.rightotal = 1
@@ -171,6 +173,7 @@ class PrettyPrinter(CharposStream):
         stack.append(tok)
 
     def end(self, *args, **kwargs):
+        assert not self.closed, "I/O operation on closed stream"
         tok = End(*args, **kwargs)
         stack = self.scanstack
         if not stack:
@@ -188,6 +191,7 @@ class PrettyPrinter(CharposStream):
                 self.flush()
 
     def newline(self, fill=False, mandatory=False):
+        assert not self.closed, "I/O operation on closed stream"
         stack = self.scanstack
         if not stack:
             self.leftotal = self.rightotal = 1
@@ -205,12 +209,15 @@ class PrettyPrinter(CharposStream):
         stack.append(tok)
 
     def indent(self, *args, **kwargs):
+        assert not self.closed, "I/O operation on closed stream"
         self.queue.append(Indentation(*args, **kwargs))
 
     def logical_block(self, lst=None, *args, **kwargs):
+        assert not self.closed, "I/O operation on closed stream"
         return LogicalBlock(self, lst, *args, **kwargs)
 
     def pprint(self, obj):
+        assert not self.closed, "I/O operation on closed stream"
         if isinstance(obj, (basestring, int, float, long, complex)):
             self.write(repr(obj))
         elif isinstance(obj, list):
@@ -257,6 +264,7 @@ class PrettyPrinter(CharposStream):
 
     def flush(self):
         """Output as many queue entries as possible."""
+        assert not self.closed, "I/O operation on closed stream"
         queue = self.queue
         i = 0
         n = len(queue)
@@ -275,12 +283,14 @@ class PrettyPrinter(CharposStream):
 
     def close(self):
         if not self.closed:
+            self.flush()
             assert not self.queue, "leftover items in output queue"
             assert not self.scanstack, "leftover itmes on scan stack"
             assert not self.printstack, "leftover items on print stack"
             self.closed = True
 
     def terpri(self):
+        assert not self.closed, "I/O operation on closed stream"
         prefix = self.prefix
         self.stream.write("\n" + prefix)
         self.space = self.margin - (len(prefix) if prefix else 0)
