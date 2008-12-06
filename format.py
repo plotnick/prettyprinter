@@ -110,7 +110,7 @@ class Directive(object):
         elif atsign and "@" not in self.modifiers_allowed:
             raise FormatError("at-sign not allowed for this directive")
         if len(params) > self.parameters_allowed:
-            raise FormatError("no more than ~D parameter~:P allowed "
+            raise FormatError("no~@[ more than ~D~] parameter~:P allowed "
                               "for this directive", self.parameters_allowed)
 
         self.params = params; self.colon = colon; self.atsign = atsign
