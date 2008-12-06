@@ -6,8 +6,10 @@ import sys
 from cStringIO import StringIO
 from math import log10
 import unicodedata
+from bindings import bindings
 from charpos import CharposStream
 from prettyprinter import PrettyPrinter
+import printervars
 
 __all__ = ["Formatter", "format"]
 
@@ -500,7 +502,7 @@ class Hexadecimal(Numeric):
 
 # Printer Operations
 
-class Aesthetic(Directive):
+class Padded(Directive):
     modifiers_allowed = Modifiers.all
     parameters_allowed = 4
 
@@ -515,25 +517,46 @@ class Aesthetic(Directive):
         if minpad != 0: raise FormatError("minpad parameter must be 0")
 
         a = args.next()
-        s = "[]" if self.colon and a is None else str(a)
+        s = "[]" if self.colon and a is None \
+                 else repr(a) if printervars.print_escape else str(a)
         stream.write(s.rjust(mincol, padchar) if self.atsign else \
                      s.ljust(mincol, padchar))
 
-class Standard(Directive):
-    modifiers_allowed = Modifiers.all
-
+class Aesthetic(Padded):
     def format(self, stream, args):
-        stream.write(repr(args.next()))
+        with bindings(printervars, print_escape=None):
+            super(Aesthetic, self).format(stream, args)
+
+class Standard(Padded):
+    def format(self, stream, args):
+        with bindings(printervars, print_escape=True):
+            super(Standard, self).format(stream, args)
 
 class Write(Directive):
     modifiers_allowed = Modifiers.all
 
+    def __init__(self, *args):
+        super(Write, self).__init__(*args)
+        self.bindings = dict(filter(None,
+                                    [self.colon and ("print_pretty", True),
+                                     self.atsign and ("print_level", None),
+                                     self.atsign and ("print_length", None)]))
+
     def format(self, stream, args):
         arg = args.next()
-        try:
-            stream.pprint(arg)
-        except AttributeError:
-            stream.write(repr(arg))
+        with bindings(printervars, **self.bindings):
+            if printervars.print_pretty:
+                if isinstance(stream, PrettyPrinter):
+                    stream.write(arg)
+                else:
+                    pp = PrettyPrinter(stream)
+                    try:
+                        pp.write(arg)
+                    finally:
+                        pp.close()
+            else:
+                stream.write(repr(arg) if printervars.print_escape \
+                                       else str(arg))
 
 # Pretty Printer Operations
 

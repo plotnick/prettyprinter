@@ -22,7 +22,7 @@ class PrettyPrinterTest(unittest.TestCase):
         stringstream.close()
 
     def testLogicalBlock(self):
-        control = "+ ~<Roads ~<~A, ~:_~A~:> ~:_ Town ~<~A~:>~:> +"
+        control = "+ ~<Roads ~<~W, ~:_~W~:> ~:_ Town ~<~W~:>~:> +"
         roads = ["Elm", "Cottonwood"]
         town = ["Boston"]
 
@@ -37,7 +37,7 @@ class PrettyPrinterTest(unittest.TestCase):
    Town Boston +"""[1:], 21, control, [roads, town])
 
     def testIndentation(self):
-        control = "~<(~;~A ~:I~A ~:_~A ~1I~_~A~;)~:>"
+        control = "~<(~;~W ~:I~W ~:_~W ~1I~_~W~;)~:>"
         defun = ["defun", "prod", "(x y)", "(* x y)"]
 
         self.ppFormatEquals("""
