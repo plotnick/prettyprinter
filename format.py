@@ -98,6 +98,7 @@ class Directive(object):
     modifiers_allowed = None
     parameters_allowed = 0
     need_charpos = False
+    need_prettyprinter = False
 
     def __init__(self, params, colon, atsign, control, start, end, parent=None):
         if (colon or atsign) and self.modifiers_allowed is None:
@@ -173,10 +174,15 @@ class DelimitedDirective(Directive):
     def delimited(self):
         """Called when the complete directive, including the delimiter, has
         been parsed."""
-        # Most delimited directives need charpos if any of their clauses do.
-        self.need_charpos = any([d.need_charpos for c in self.clauses \
-                                                for d in c \
-                                     if isinstance(d, Directive)])
+        self.need_prettyprinter = any([d.need_prettyprinter \
+                                           for c in self.clauses \
+                                           for d in c \
+                                           if isinstance(d, Directive)])
+        self.need_charpos = self.need_prettyprinter or \
+            any([d.need_charpos \
+                     for c in self.clauses \
+                     for d in c \
+                     if isinstance(d, Directive)])
 
 # Basic Output
 
@@ -448,7 +454,12 @@ class Numeric(Directive):
                 padchar = " "
 
             s = commafy(s, commachar, comma_interval)
-        stream.write((sign + s).rjust(mincol, padchar))
+        with bindings(printervars,
+                      print_escape=False,
+                      print_radix=False,
+                      print_base=radix,
+                      print_readably=False):
+            stream.write((sign + s).rjust(mincol, padchar))
 
 class Radix(Numeric):
     parameters_allowed = 5
@@ -505,8 +516,15 @@ class Hexadecimal(Numeric):
 class Padded(Directive):
     modifiers_allowed = Modifiers.all
     parameters_allowed = 4
+    need_prettyprinter = True
 
     def format(self, stream, args):
+        arg = args.next()
+        stream.pprint("[]" if self.colon and arg is None \
+                           else pad(format(None, "~W", arg)) if self.params \
+                           else arg)
+
+    def pad(s):
         mincol = self.param(0, args, 0)
         colinc = self.param(1, args, 1)
         minpad = self.param(2, args, 0)
@@ -516,11 +534,8 @@ class Padded(Directive):
         if colinc != 1: raise FormatError("colinc parameter must be 1")
         if minpad != 0: raise FormatError("minpad parameter must be 0")
 
-        a = args.next()
-        s = "[]" if self.colon and a is None \
-                 else repr(a) if printervars.print_escape else str(a)
-        stream.write(s.rjust(mincol, padchar) if self.atsign else \
-                     s.ljust(mincol, padchar))
+        return s.rjust(mincol, padchar) if self.atsign else \
+               s.ljust(mincol, padchar)
 
 class Aesthetic(Padded):
     def format(self, stream, args):
@@ -534,39 +549,38 @@ class Standard(Padded):
 
 class Write(Directive):
     modifiers_allowed = Modifiers.all
+    need_prettyprinter = True
 
     def __init__(self, *args):
         super(Write, self).__init__(*args)
-        self.bindings = dict(filter(None,
-                                    [self.colon and ("print_pretty", True),
-                                     self.atsign and ("print_level", None),
-                                     self.atsign and ("print_length", None)]))
+        if self.colon or self.atsign:
+            self.bindings = {}
+            if self.colon:
+                self.bindings["print_pretty"] = True
+            if self.atsign:
+                self.bindings["print_level"] = None
+                self.bindings["print_length"] = None
+            self.format = self.format_with_bindings
 
     def format(self, stream, args):
-        arg = args.next()
+        stream.pprint(args.next())
+
+    def format_with_bindings(self, stream, args):
         with bindings(printervars, **self.bindings):
-            if printervars.print_pretty:
-                if isinstance(stream, PrettyPrinter):
-                    stream.write(arg)
-                else:
-                    pp = PrettyPrinter(stream)
-                    try:
-                        pp.write(arg)
-                    finally:
-                        pp.close()
-            else:
-                stream.write(repr(arg) if printervars.print_escape \
-                                       else str(arg))
+            stream.pprint(args.next())
 
 # Pretty Printer Operations
 
 class ConditionalNewline(Directive):
     modifiers_allowed = Modifiers.all
+    need_prettyprinter = True
 
     def format(self, stream, args):
         stream.newline(mandatory=(self.colon and self.atsign), fill=self.colon)
 
 class LogicalBlock(DelimitedDirective):
+    need_prettyprinter = True
+
     # NOTE: Instances of this class are never created directly; the
     # delimiter method of the Justification class changes the class
     # of instances delimited with "~:>".
@@ -605,6 +619,7 @@ class LogicalBlock(DelimitedDirective):
 class Indentation(Directive):
     modifiers_allowed = Modifiers.colon
     parameters_allowed = 1
+    need_prettyprinter = True
 
     def format(self, stream, args):
         stream.indent(offset=int(self.param(0, args, 0)), relative=self.colon)
@@ -691,6 +706,8 @@ class Conditional(DelimitedDirective):
     delimiter = EndConditional
 
     def delimited(self):
+        super(Conditional, self).delimited()
+
         if self.colon:
             if len(self.clauses) != 2:
                 raise FormatError("must specify exactly two sections")
@@ -744,14 +761,17 @@ class Iteration(DelimitedDirective):
         super(Iteration, self).append(x)
 
     def delimited(self):
-        self.body = prepare_directives(self.clauses[0]) if self.clauses[0] \
-                                                        else None
-        self.need_charpos = not self.body or \
-            any([d.need_charpos for d in self.body if isinstance(d, Directive)])
+        body = self.clauses[0]
+        self.need_prettyprinter = not body or \
+            any([d.need_prettyprinter for d in body if isinstance(d, Directive)])
+        self.need_charpos = self.need_prettyprinter or \
+            any([d.need_charpos for d in body if isinstance(d, Directive)])
+        self.prepared = body and prepare_directives(body)
 
     def format(self, stream, args):
         max = self.param(0, args, -1)
-        body = self.body or prepare_directives(parse_control_string(args.next()))
+        body = self.prepared or \
+            prepare_directives(parse_control_string(args.next()))
 
         args = args if self.atsign else Arguments(args.next())
         next = (lambda args: Arguments(args.next(), args)) if self.colon \
@@ -772,6 +792,7 @@ class Iteration(DelimitedDirective):
 class Recursive(Directive):
     modifiers_allowed = Modifiers.atsign
     need_charpos = True
+    need_prettyprinter = True
 
     def format(self, stream, args):
         apply_directives(stream,
@@ -792,28 +813,17 @@ class CaseConversion(DelimitedDirective):
         self.body = self.clauses[0]
 
     def format(self, stream, args):
-        if self.need_charpos:
-            try:
-                charpos = stream.charpos
-            except AttributeError:
-                charpos = 0
-            s = CharposStream(StringIO(), charpos)
-        else:
-            s = StringIO()
+        stringstream = StringIO()
         try:
-            apply_directives(s, self.body, args)
-            string = s.getvalue()
+            Formatter(self.body)(stringstream, args)
+            s = stringstream.getvalue()
         finally:
-            s.close()
+            stringstream.close()
 
-        if self.colon and self.atsign:
-            stream.write(string.upper())
-        elif self.colon:
-            stream.write(string.title())
-        elif self.atsign:
-            stream.write(string.capitalize())
-        else:
-            stream.write(string.lower())
+        stream.write(s.upper() if self.colon and self.atsign \
+                               else s.title() if self.colon \
+                               else s.capitalize() if self.atsign \
+                               else s.lower())
 
 class Plural(Directive):
     modifiers_allowed = Modifiers.all
@@ -997,11 +1007,18 @@ class Formatter(object):
             self.directives = tuple(parse_control_string(control))
         elif isinstance(control, (tuple, list)):
             self.directives = control
-        self.need_charpos = any([d.need_charpos for d in self.directives \
-                                     if isinstance(d, Directive)])
+        self.need_prettyprinter = any([d.need_prettyprinter \
+                                           for d in self.directives \
+                                           if isinstance(d, Directive)])
+        self.need_charpos = self.need_prettyprinter or \
+            any([d.need_charpos \
+                     for d in self.directives \
+                     if isinstance(d, Directive)])
 
     def __call__(self, stream, *args):
-        if not isinstance(stream, CharposStream) and self.need_charpos:
+        if not isinstance(stream, PrettyPrinter) and self.need_prettyprinter:
+            stream = PrettyPrinter(stream)
+        elif not isinstance(stream, CharposStream) and self.need_charpos:
             stream = CharposStream(stream)
         if len(args) == 1 and isinstance(args[0], Arguments):
             args = args[0]
@@ -1023,11 +1040,12 @@ def fast_apply_directives(stream, write, directives, args):
             x(stream, args)
 
 def apply_directives(stream, directives, args):
-    for directive in directives:
-        if isinstance(directive, basestring):
-            stream.write(directive)
+    write = stream.write
+    for x in directives:
+        if isinstance(x, basestring):
+            write(x)
         else:
-            directive.format(stream, args)
+            x.format(stream, args)
 
 def format(destination, control, *args):
     if destination is None:
