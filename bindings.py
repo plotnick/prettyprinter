@@ -7,23 +7,21 @@ class bindings(object):
     namespace will be used."""
 
     def __init__(self, obj=None, **bindings):
-        self.namespace = obj and obj.__dict__
+        self.symbols = obj.__dict__ if obj else globals()
         self.bindings = bindings
 
     def __enter__(self):
-        syms = self.namespace or globals()
-        self.old_bindings = []
+        self.old_bindings = {}
         self.unbound = []
-        for name, value in self.bindings.items():
+        for name in self.bindings:
             try:
-                self.old_bindings.append((name, syms[name]))
+                self.old_bindings[name] = self.symbols[name]
             except KeyError:
                 self.unbound.append(name)
-            syms[name] = value
+            self.symbols[name] = self.bindings[name]
 
     def __exit__(self, *exc_info):
-        syms = self.namespace or globals()
-        for name, value in self.old_bindings:
-            syms[name] = value
+        for name in self.old_bindings:
+            self.symbols[name] = self.old_bindings[name]
         for name in self.unbound:
-            del syms[name]
+            del self.symbols[name]
