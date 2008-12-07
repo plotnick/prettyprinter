@@ -519,23 +519,23 @@ class Padded(Directive):
     need_prettyprinter = True
 
     def format(self, stream, args):
+        def pad(s):
+            mincol = self.param(0, args, 0)
+            colinc = self.param(1, args, 1)
+            minpad = self.param(2, args, 0)
+            padchar = self.param(3, args, " ")
+
+            # The string methods l/rjust don't support a colinc or minpad.
+            if colinc != 1: raise FormatError("colinc parameter must be 1")
+            if minpad != 0: raise FormatError("minpad parameter must be 0")
+
+            return s.rjust(mincol, padchar) if self.atsign else \
+                   s.ljust(mincol, padchar)
+
         arg = args.next()
         stream.pprint("[]" if self.colon and arg is None \
                            else pad(format(None, "~W", arg)) if self.params \
                            else arg)
-
-    def pad(s):
-        mincol = self.param(0, args, 0)
-        colinc = self.param(1, args, 1)
-        minpad = self.param(2, args, 0)
-        padchar = self.param(3, args, " ")
-
-        # The string methods l/rjust don't support a colinc or minpad.
-        if colinc != 1: raise FormatError("colinc parameter must be 1")
-        if minpad != 0: raise FormatError("minpad parameter must be 0")
-
-        return s.rjust(mincol, padchar) if self.atsign else \
-               s.ljust(mincol, padchar)
 
 class Aesthetic(Padded):
     def format(self, stream, args):
