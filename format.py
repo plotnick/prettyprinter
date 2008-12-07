@@ -579,11 +579,11 @@ class ConditionalNewline(Directive):
         stream.newline(mandatory=(self.colon and self.atsign), fill=self.colon)
 
 class LogicalBlock(DelimitedDirective):
-    need_prettyprinter = True
-
     # NOTE: Instances of this class are never created directly; the
     # delimiter method of the Justification class changes the class
     # of instances delimited with "~:>".
+
+    need_prettyprinter = True
 
     def delimited(self):
         super(LogicalBlock, self).delimited()
@@ -604,8 +604,6 @@ class LogicalBlock(DelimitedDirective):
             raise FormatError("too many segments for ~~<...~~:>")
 
     def format(self, stream, args):
-        if not isinstance(stream, PrettyPrinter):
-            stream = PrettyPrinter(stream=stream)
         with stream.logical_block(None,
                                   prefix=str(self.prefix),
                                   suffix=str(self.suffix)):
