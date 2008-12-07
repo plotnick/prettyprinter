@@ -4,3 +4,4 @@ print_escape = True
 print_length = None
 print_level = None
 print_pretty = True
+print_right_margin = None

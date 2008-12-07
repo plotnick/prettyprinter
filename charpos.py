@@ -2,6 +2,7 @@ import os
 from array import array
 from fcntl import ioctl
 import termios
+import printervars
 
 class CharposStream(object):
     """An output stream wrapper that keeps track of character positions
@@ -49,6 +50,8 @@ class CharposStream(object):
     @property
     def output_width(self):
         assert not self.closed, "I/O operation on closed stream"
+        if printervars.print_right_margin:
+            return printervars.print_right_margin
         if "COLUMNS" in os.environ:
             return int(os.environ["COLUMNS"])
         try:

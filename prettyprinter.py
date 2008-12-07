@@ -119,9 +119,7 @@ class LogicalBlock(object):
 class PrettyPrinter(CharposStream):
     def __init__(self, stream=sys.stdout, width=None, charpos=None):
         """Pretty-print to stream, with right margin at width characters,
-        starting at position charpos.  If width is omitted, attempt to
-        determine the output width of stream."""
-
+        starting at position charpos."""
         if not stream:
             raise RuntimeError("pretty-printing to nowhere")
         self.stream = stream
