@@ -141,7 +141,7 @@ class PrettyPrinter(CharposStream):
         self.queue = list()
         self.prefix = ""
 
-    def string(self, string):
+    def write(self, string):
         assert not self.closed, "I/O operation on closed stream"
         l = len(string)
         stack = self.scanstack
@@ -218,7 +218,7 @@ class PrettyPrinter(CharposStream):
         assert not self.closed, "I/O operation on closed stream"
         return LogicalBlock(self, lst, *args, **kwargs)
 
-    def write(self, obj, level=0):
+    def pprint(self, obj, level=0):
         def inflection(obj):
             if isinstance(obj, list):
                 return ("[", "]")
@@ -226,66 +226,74 @@ class PrettyPrinter(CharposStream):
                 return ("%s([" % type(obj).__name__, "])")
 
         assert not self.closed, "I/O operation on closed stream"
-        if isinstance(obj, (basestring, int, float, long, complex)):
-            self.string(str(obj))
+        if isinstance(obj, basestring):
+            self.write(repr(obj) if printervars.print_escape and \
+                                     obj not in ("\n", "\t") \
+                                 else obj)
+        elif isinstance(obj, (int, float, long, complex)):
+            self.write(repr(obj) if printervars.print_escape else str(obj))
         elif isinstance(obj, (list, set, frozenset, deque)):
             if printervars.print_level == level:
-                self.string("#")
+                self.write("#")
                 return
             (prefix, suffix) = inflection(obj)
             with self.logical_block(enumerate(obj),
                                     prefix=prefix, suffix=suffix) as l:
                 for (i, x) in l:
                     if printervars.print_length == i:
-                        self.string("...")
+                        self.write("...")
                         return
-                    self.write(x, level+1)
+                    self.pprint(x, level+1)
                     l.exit_if_list_exhausted()
-                    self.string(", ")
-                    self.newline(fill=True)
+                    self.write(", ")
+                    if printervars.print_pretty:
+                        self.newline(fill=True)
         elif isinstance(obj, tuple):
             if printervars.print_level == level:
-                self.string("#")
+                self.write("#")
                 return
             with self.logical_block(enumerate(obj),
                                     prefix="(", suffix=")") as l:
                 if printervars.print_length == 0:
-                    self.string("...")
+                    self.write("...")
                     return
                 (i, x) = l.next()
-                self.write(x, level+1)
-                self.string(",")
+                self.pprint(x, level+1)
+                self.write(",")
                 l.exit_if_list_exhausted()
-                self.string(" ")
-                self.newline(fill=True)
+                self.write(" ")
+                if printervars.print_pretty:
+                    self.newline(fill=True)
                 for (i, x) in l:
                     if printervars.print_length == i:
-                        self.string("...")
+                        self.write("...")
                         return
-                    self.write(x, level+1)
+                    self.pprint(x, level+1)
                     l.exit_if_list_exhausted()
-                    self.string(", ")
-                    self.newline(fill=True)
+                    self.write(", ")
+                    if printervars.print_pretty:
+                        self.newline(fill=True)
         elif isinstance(obj, dict):
             if printervars.print_level == level:
-                self.string("#")
+                self.write("#")
                 return
             with self.logical_block(enumerate(obj.items()),
                                     prefix="{", suffix="}") as l:
                 for (i, (key, value)) in l:
                     if printervars.print_length == i:
-                        self.string("...")
+                        self.write("...")
                         return
-                    self.write(key)
-                    self.string(": ")
-                    self.write(value)
+                    self.pprint(key)
+                    self.write(": ")
+                    self.pprint(value)
                     l.exit_if_list_exhausted()
-                    self.string(", ")
-                    self.newline(fill=True)
-        elif hasattr(obj, "__pprint__"):
+                    self.write(", ")
+                    if printervars.print_pretty:
+                        self.newline(fill=True)
+        elif printervars.print_pretty and hasattr(obj, "__pprint__"):
             obj.__pprint__(self)
         else:
-            self.string(repr(obj) if printervars.print_escape else str(obj))
+            self.write(repr(obj) if printervars.print_escape else str(obj))
 
     def flush(self):
         """Output as many queue entries as possible."""
@@ -336,6 +344,6 @@ class PrettyPrinter(CharposStream):
 def pprint(obj, *args, **kwargs):
     pp = PrettyPrinter(*args, **kwargs)
     with bindings(printervars, print_pretty=True):
-        pp.write(obj)
+        pp.pprint(obj)
     pp.terpri()
     pp.close()
