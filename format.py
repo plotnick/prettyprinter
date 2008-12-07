@@ -174,15 +174,15 @@ class DelimitedDirective(Directive):
     def delimited(self):
         """Called when the complete directive, including the delimiter, has
         been parsed."""
-        self.need_prettyprinter = any([d.need_prettyprinter \
+        self.need_prettyprinter = any([x.need_prettyprinter \
                                            for c in self.clauses \
-                                           for d in c \
-                                           if isinstance(d, Directive)])
+                                           for x in c \
+                                           if isinstance(x, Directive)])
         self.need_charpos = self.need_prettyprinter or \
-            any([d.need_charpos \
+            any([x.need_charpos \
                      for c in self.clauses \
-                     for d in c \
-                     if isinstance(d, Directive)])
+                     for x in c \
+                     if isinstance(x, Directive)])
 
 # Basic Output
 
@@ -761,9 +761,9 @@ class Iteration(DelimitedDirective):
     def delimited(self):
         body = self.clauses[0]
         self.need_prettyprinter = not body or \
-            any([d.need_prettyprinter for d in body if isinstance(d, Directive)])
+            any([x.need_prettyprinter for x in body if isinstance(x, Directive)])
         self.need_charpos = self.need_prettyprinter or \
-            any([d.need_charpos for d in body if isinstance(d, Directive)])
+            any([x.need_charpos for x in body if isinstance(x, Directive)])
         self.prepared = body and prepare_directives(body)
 
     def format(self, stream, args):
@@ -1005,13 +1005,13 @@ class Formatter(object):
             self.directives = tuple(parse_control_string(control))
         elif isinstance(control, (tuple, list)):
             self.directives = control
-        self.need_prettyprinter = any([d.need_prettyprinter \
-                                           for d in self.directives \
-                                           if isinstance(d, Directive)])
+        self.need_prettyprinter = any([x.need_prettyprinter \
+                                           for x in self.directives \
+                                           if isinstance(x, Directive)])
         self.need_charpos = self.need_prettyprinter or \
-            any([d.need_charpos \
-                     for d in self.directives \
-                     if isinstance(d, Directive)])
+            any([x.need_charpos \
+                     for x in self.directives \
+                     if isinstance(x, Directive)])
 
     def __call__(self, stream, *args):
         if not isinstance(stream, PrettyPrinter) and self.need_prettyprinter:
@@ -1026,8 +1026,8 @@ class Formatter(object):
         return args
 
 def prepare_directives(directives):
-    return [(d, True) if isinstance(d, basestring) else (d.format, False) \
-                for d in directives]
+    return [(x, True) if isinstance(x, basestring) else (x.format, False) \
+                for x in directives]
 
 def fast_apply_directives(stream, write, directives, args):
     """Apply a list of prepared directives."""
