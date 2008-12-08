@@ -294,15 +294,12 @@ class PrettyPrinter(CharposStream):
         assert not self.closed, "I/O operation on closed stream"
         queue = self.queue
         i = 0
-        n = len(queue)
         total = 0
-        while i < n:
-            q = queue[i]
-            size = q.size
-            if size < 0:
+        for q in queue:
+            if q.size < 0:
                 break
             q.output(self)
-            total += size
+            total += q.size
             i += 1
         if i > 0:
             self.queue = queue[i:]
