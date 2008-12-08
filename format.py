@@ -82,7 +82,7 @@ class Arguments(object):
     def remaining(self):
         return self.len - self.cur
 
-class Modifiers:
+class Modifiers(object):
     colon = frozenset([":"])
     atsign = frozenset(["@"])
     both = frozenset([":@"])
@@ -602,10 +602,12 @@ class LogicalBlock(DelimitedDirective):
             ((self.prefix,), self.body, (self.suffix,)) = self.clauses
         else:
             raise FormatError("too many segments for ~~<...~~:>")
+        self.per_line = self.separators and self.separators[0].atsign
 
     def format(self, stream, args):
         with stream.logical_block(None,
                                   prefix=str(self.prefix),
+                                  per_line=self.per_line,
                                   suffix=str(self.suffix)):
             try:
                 apply_directives(stream,
@@ -842,7 +844,7 @@ class Plural(Directive):
 # Miscellaneous Pseudo-Operations
 
 class Separator(Directive):
-    modifiers_allowed = Modifiers.colon
+    modifiers_allowed = Modifiers.colon | Modifiers.atsign
 
 class Escape(Directive):
     modifiers_allowed = Modifiers.colon
