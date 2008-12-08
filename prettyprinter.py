@@ -12,8 +12,18 @@ class PrintLevelExceeded(StopIteration):
     pass
 
 class Token(object):
-    """Base class for prettyprinter tokens."""
+    """Base class for prettyprinter tokens.
+
+    Token instances should not be created directly by the user; the
+    corresponding PrettyPrinter methods should be used instead."""
+
     size = 0
+
+    def output(self, pp):
+        """Send output to the given PrettyPrinter stream.
+
+        These methods collectively correspond to Oppen's `print' routine."""
+        pass
 
 class Begin(Token):
     """Begin a logical block."""
@@ -43,6 +53,8 @@ class End(Token):
             pass
 
 class Newline(Token):
+    """Base class for conditional newlines."""
+
     def indent(self, pp, n):
         pp.terpri()
         pp._write(" " * n)
@@ -153,6 +165,7 @@ class PrettyPrinter(CharposStream):
         self.level = 0
 
     def write(self, string):
+        """Enqueue a string for output."""
         assert not self.closed, "I/O operation on closed stream"
         l = len(string)
         stack = self.scanstack
@@ -173,6 +186,7 @@ class PrettyPrinter(CharposStream):
                 self.flush()
 
     def begin(self, *args, **kwargs):
+        """Begin a new logical block."""
         assert not self.closed, "I/O operation on closed stream"
         if printervars.print_level is not None and \
                 self.level >= printervars.print_level:
@@ -191,6 +205,7 @@ class PrettyPrinter(CharposStream):
         self.level += 1
 
     def end(self, *args, **kwargs):
+        """End the current logical block."""
         assert not self.closed, "I/O operation on closed stream"
         self.level -= 1
         tok = End(*args, **kwargs)
@@ -210,6 +225,7 @@ class PrettyPrinter(CharposStream):
                 self.flush()
 
     def newline(self, fill=False, mandatory=False):
+        """Enqueue a conditional newline."""
         assert not self.closed, "I/O operation on closed stream"
         stack = self.scanstack
         if not stack:
@@ -228,14 +244,17 @@ class PrettyPrinter(CharposStream):
         stack.append(tok)
 
     def indent(self, *args, **kwargs):
+        """Set the indentation level for the current logical block."""
         assert not self.closed, "I/O operation on closed stream"
         self.queue.append(Indentation(*args, **kwargs))
 
     def logical_block(self, lst=None, *args, **kwargs):
+        """Return a context manager for a new logical block."""
         assert not self.closed, "I/O operation on closed stream"
         return LogicalBlock(self, lst, *args, **kwargs)
 
     def pprint(self, obj):
+        """Pretty-print the given object."""
         def inflection(obj):
             if isinstance(obj, list):
                 return ("[", "]")
