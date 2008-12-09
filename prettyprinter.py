@@ -63,6 +63,9 @@ class End(Token):
 class Newline(Token):
     """Base class for conditional newlines."""
 
+    def __init__(self, blankspace=0):
+        self.blankspace = blankspace
+
     def indent(self, pp, n):
         pp.terpri()
         pp._write(" " * n)
@@ -70,13 +73,17 @@ class Newline(Token):
 class Linear(Newline):
     def output(self, pp):
         (offset, fits) = pp.printstack[-1][-2:]
-        if not fits:
+        if fits:
+            pp._write(" " * self.blankspace)
+        else:
             self.indent(pp, offset)
 
 class Fill(Newline):
     def output(self, pp):
         (offset, fits) = pp.printstack[-1][-2:]
-        if not fits and self.size > pp.space:
+        if fits or self.size <= pp.space:
+            pp._write(" " * self.blankspace)
+        else:
             self.indent(pp, offset)
 
 class Mandatory(Newline):
@@ -230,7 +237,7 @@ class PrettyPrinter(CharposStream):
             if not stack:
                 self.flush()
 
-    def newline(self, fill=False, mandatory=False):
+    def newline(self, fill=False, mandatory=False, blankspace=0):
         """Enqueue a conditional newline."""
         assert not self.closed, "I/O operation on closed stream"
         stack = self.scanstack
@@ -242,12 +249,14 @@ class PrettyPrinter(CharposStream):
             if isinstance(top, Newline):
                 top.size += self.rightotal
                 stack.pop()
-        tok = Mandatory() if mandatory \
-                          else Fill() if fill \
-                          else Linear()
+        tok = Mandatory(blankspace) if mandatory \
+                          else Fill(blankspace) if fill \
+                          else Linear(blankspace)
         tok.size = -self.rightotal
         self.queue.append(tok)
         stack.append(tok)
+        if blankspace:
+            self.rightotal += blankspace
 
     def indent(self, *args, **kwargs):
         """Set the indentation level for the current logical block."""
