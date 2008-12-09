@@ -28,29 +28,29 @@ class PrettyPrinterTest(unittest.TestCase):
         roads = ["Elm", "Cottonwood"]
         town = ["Boston"]
 
-        self.ppFormatEquals("""
-+ Roads Elm, Cottonwood  Town Boston +"""[1:], 50, control, [roads, town])
-        self.ppFormatEquals("""
+        self.ppFormatEquals("""\
++ Roads Elm, Cottonwood  Town Boston +""", 50, control, [roads, town])
+        self.ppFormatEquals("""\
 + Roads Elm, Cottonwood 
-   Town Boston +"""[1:], 25, control, [roads, town])
-        self.ppFormatEquals("""
+   Town Boston +""", 25, control, [roads, town])
+        self.ppFormatEquals("""\
 + Roads Elm, 
         Cottonwood 
-   Town Boston +"""[1:], 21, control, [roads, town])
+   Town Boston +""", 21, control, [roads, town])
 
     def testIndentation(self):
         control = "~<(~;~A ~:I~A ~:_~A ~1I~_~A~;)~:>"
         defun = ["defun", "prod", "(x y)", "(* x y)"]
 
-        self.ppFormatEquals("""
-(defun prod (x y) (* x y))"""[1:], 50, control, defun)
-        self.ppFormatEquals("""
+        self.ppFormatEquals("""\
+(defun prod (x y) (* x y))""", 50, control, defun)
+        self.ppFormatEquals("""\
 (defun prod (x y) 
-  (* x y))"""[1:], 25, control, defun)
-        self.ppFormatEquals("""
+  (* x y))""", 25, control, defun)
+        self.ppFormatEquals("""\
 (defun prod 
        (x y) 
-  (* x y))"""[1:], 15, control, defun)
+  (* x y))""", 15, control, defun)
 
     def testPrintLevel(self):
         levels = ["#",
