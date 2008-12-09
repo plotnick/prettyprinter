@@ -59,6 +59,14 @@ class PrettyPrinterTest(unittest.TestCase):
 * def""", None, "~<* ~@;~A~:@_~<+ ~@;~@{~A~^~:@_~}~:>~:@_~A~:>",
                 ("abc", (123, 456, 789), "def"))
 
+        # Per-line prefixes are always printed, no matter how a newline
+        # originates.
+        self.ppFormatEquals("""\
+;;; (list first
+;;;       string on
+;;; two lines)""", 25, "~@<;;; ~@;(list ~@<~A ~_~A~:>)~:>",
+                       "first", "string on\ntwo lines")
+
     def testIndentation(self):
         control = "~<(~;~A ~:I~A ~:_~A ~1I~_~A~;)~:>"
         defun = ["defun", "prod", "(x y)", "(* x y)"]
