@@ -32,11 +32,11 @@ class PrettyPrinterTest(unittest.TestCase):
         self.ppFormatEquals("""\
 + Roads Elm, Cottonwood  Town Boston +""", 50, control, [self.roads, self.town])
         self.ppFormatEquals("""\
-+ Roads Elm, Cottonwood 
++ Roads Elm, Cottonwood
    Town Boston +""", 25, control, [self.roads, self.town])
         self.ppFormatEquals("""\
-+ Roads Elm, 
-        Cottonwood 
++ Roads Elm,
+        Cottonwood
    Town Boston +""", 21, control, [self.roads, self.town])
 
     def testPerLinePrefix(self):
@@ -46,8 +46,8 @@ class PrettyPrinterTest(unittest.TestCase):
 ;;; Roads = Elm, Cottonwood  Town Boston""",
                             50, control, [self.roads, self.town])
         self.ppFormatEquals("""\
-;;; Roads = Elm, 
-;;;       = Cottonwood 
+;;; Roads = Elm,
+;;;       = Cottonwood
 ;;;  Town Boston""", 25, control, [self.roads, self.town])
 
         # Per-line prefixes should obey a stack discipline.
@@ -66,15 +66,15 @@ class PrettyPrinterTest(unittest.TestCase):
         self.ppFormatEquals("""\
 (defun prod (x y) (* x y))""", 50, control, defun)
         self.ppFormatEquals("""\
-(defun prod (x y) 
+(defun prod (x y)
   (* x y))""", 25, control, defun)
         self.ppFormatEquals("""\
-(defun prod 
-       (x y) 
+(defun prod
+       (x y)
   (* x y))""", 15, control, defun)
         self.ppFormatEquals("""\
-;;; (defun prod 
-;;;        (x y) 
+;;; (defun prod
+;;;        (x y)
 ;;;   (* x y))""", 15, "~<;;; ~@;~@?~:>", [control, defun])
 
     def testPrintLevel(self):

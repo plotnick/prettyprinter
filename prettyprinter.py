@@ -64,6 +64,8 @@ class Newline(Token):
     """Base class for conditional newlines."""
 
     def indent(self, pp, n):
+        """Break the current line and indent to column n."""
+        pp.blankspace = ""      # suppress trailing whitespace
         pp.terpri()
         pp._write(" " * n)
 
@@ -167,9 +169,10 @@ class PrettyPrinter(CharposStream):
         self.space = self.margin - charpos
         self.scanstack = deque()
         self.printstack = list()
-        self.prefix = ""
         self.queue = list()
-        self.level = 0
+        self.blankspace = ""    # trailing whitespace
+        self.prefix = ""        # per-line prefix
+        self.level = 0          # depth counter
 
     def write(self, string):
         """Enqueue a string for output."""
@@ -340,21 +343,43 @@ class PrettyPrinter(CharposStream):
 
     def terpri(self):
         assert not self.closed, "I/O operation on closed stream"
-        self.stream.write("\n" + self.prefix)
+        self.stream.write(self.blankspace + "\n" + self.prefix)
+        self.blankspace = ""
         self.space = self.margin - len(self.prefix)
+
+    def _write(self, str):
+        """Write the given string to the underlying stream."""
+
+        # There are two sources of trickiness here: the fact that per-line
+        # prefixes need to be printed on every line, no matter how the
+        # newline occurs, and the trailing whitespace suppression.
+        # The former is handled by breaking the string at newlines and
+        # letting terpri take care of printing the prefix.  The latter
+        # involves not immediately printing any trailing whitespace, but
+        # keeping it around and ensuring that it is eventually printed,
+        # unless explicitly suppressed (as is done by the conditional newline
+        # output methods).  Note that we *count* trailing whitespace here
+        # as if it had been printed (in adjusting self.space); this is
+        # needed for things that depend on charpos to work correctly
+        # (e.g., indentation).
+
+        (before, newline, after) = str.partition("\n")
+        if newline:
+            self.stream.write(self.blankspace + before)
+            self.blankspace = ""
+            self.terpri()
+            self._write(after)
+        else:
+            i = n = len(before)
+            while i > 0 and before[i-1] == " ":
+                i -= 1
+            self.stream.write(self.blankspace + before[:i])
+            self.blankspace = before[i:]
+            self.space -= n
 
     @property
     def charpos(self):
         return self.margin - self.space
-
-    def _write(self, str):
-        (before, newline, after) = str.partition("\n")
-        self.stream.write(before)
-        if newline:
-            self.terpri()
-            self._write(after)
-        else:
-            self.space -= len(before)
 
 def pprint(obj, *args, **kwargs):
     pp = PrettyPrinter(*args, **kwargs)
