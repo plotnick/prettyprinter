@@ -177,22 +177,20 @@ class PrettyPrinter(CharposStream):
     def write(self, string):
         """Enqueue a string for output."""
         assert not self.closed, "I/O operation on closed stream"
-        l = len(string)
-        stack = self.scanstack
-        if not stack:
+        if not self.scanstack:
             self._write(string)
         else:
+            l = len(string)
             q = self.queue[-1]
             if isinstance(q, String):
                 # Don't create a seperate token; merge with the last one.
                 q.string += string
                 q.size += l
             else:
-                tok = String(string, l)
-                self.queue.append(tok)
+                self.queue.append(String(string, l))
             self.rightotal += l
             while self.rightotal - self.leftotal > self.space:
-                stack.popleft().size = 999999   # infinity
+                self.scanstack.popleft().size = 999999   # infinity
                 self.flush()
 
     def begin(self, *args, **kwargs):
