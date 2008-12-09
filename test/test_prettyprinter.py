@@ -7,6 +7,9 @@ from bindings import bindings
 import printervars
 
 class PrettyPrinterTest(unittest.TestCase):
+    roads = ["Elm", "Cottonwood"]
+    town = ["Boston"]
+
     def ppEquals(self, result, obj, *args, **kwargs):
         stringstream = StringIO()
         pp = PrettyPrinter(stringstream, *args, **kwargs)
@@ -25,18 +28,36 @@ class PrettyPrinterTest(unittest.TestCase):
 
     def testLogicalBlock(self):
         control = "+ ~<Roads ~<~A, ~:_~A~:> ~:_ Town ~<~A~:>~:> +"
-        roads = ["Elm", "Cottonwood"]
-        town = ["Boston"]
 
         self.ppFormatEquals("""\
-+ Roads Elm, Cottonwood  Town Boston +""", 50, control, [roads, town])
++ Roads Elm, Cottonwood  Town Boston +""", 50, control, [self.roads, self.town])
         self.ppFormatEquals("""\
 + Roads Elm, Cottonwood 
-   Town Boston +""", 25, control, [roads, town])
+   Town Boston +""", 25, control, [self.roads, self.town])
         self.ppFormatEquals("""\
 + Roads Elm, 
         Cottonwood 
-   Town Boston +""", 21, control, [roads, town])
+   Town Boston +""", 21, control, [self.roads, self.town])
+
+    def testPerLinePrefix(self):
+        control = "~<;;; ~@;Roads ~<= ~@;~A, ~:_~A~:> ~:_ Town ~<~A~:>~:>"
+
+        self.ppFormatEquals("""\
+;;; Roads = Elm, Cottonwood  Town Boston""",
+                            50, control, [self.roads, self.town])
+        self.ppFormatEquals("""\
+;;; Roads = Elm, 
+;;;       = Cottonwood 
+;;;  Town Boston""", 25, control, [self.roads, self.town])
+
+        # Per-line prefixes should obey a stack discipline.
+        self.ppFormatEquals("""\
+* abc
+* + 123
+* + 456
+* + 789
+* def""", None, "~<* ~@;~A~:@_~<+ ~@;~@{~A~^~:@_~}~:>~:@_~A~:>",
+                ("abc", (123, 456, 789), "def"))
 
     def testIndentation(self):
         control = "~<(~;~A ~:I~A ~:_~A ~1I~_~A~;)~:>"
@@ -51,6 +72,10 @@ class PrettyPrinterTest(unittest.TestCase):
 (defun prod 
        (x y) 
   (* x y))""", 15, control, defun)
+        self.ppFormatEquals("""\
+;;; (defun prod 
+;;;        (x y) 
+;;;   (* x y))""", 15, "~<;;; ~@;~@?~:>", [control, defun])
 
     def testPrintLevel(self):
         levels = ["#",

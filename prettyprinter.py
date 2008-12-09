@@ -33,10 +33,17 @@ class Begin(Token):
         self.per_line = per_line
 
     def output(self, pp):
+        offset = pp.charpos
         if self.prefix:
             pp._write(self.prefix)
-        pp.printstack.append(((self.prefix, self.per_line), pp.space,
-                              pp.charpos, self.size <= pp.space))
+        if self.per_line:
+            # Following XP, per-line prefixes are arranged to print directly
+            # below the occurrence of the prefix on the first line.
+            pp.prefix += (offset - len(pp.prefix)) * " " + self.prefix
+        pp.printstack.append((pp.prefix,
+                              pp.space,
+                              pp.charpos - len(pp.prefix),
+                              self.size <= pp.space))
 
 class End(Token):
     """End a logical block."""
@@ -49,6 +56,7 @@ class End(Token):
             pp._write(self.suffix)
         try:
             pp.printstack.pop()
+            pp.prefix = pp.printstack[-1][0] if pp.printstack else ""
         except IndexError:
             pass
 
@@ -81,11 +89,10 @@ class Indentation(Token):
         self.relative = relative
 
     def output(self, pp):
-        ((prefix, per_line), block, offset, fits) = pp.printstack.pop()
-        offset = pp.margin - ((pp.space if self.relative else block) + \
-                                  (len(prefix) if per_line else 0) - \
-                                  self.offset)
-        pp.printstack.append(((prefix, per_line), block, offset, fits))
+        (prefix, space, offset, fits) = pp.printstack.pop()
+        offset = pp.margin - ((pp.space if self.relative else space) + \
+                                  len(prefix) - self.offset)
+        pp.printstack.append((prefix, space, offset, fits))
 
 class String(Token):
     def __init__(self, string, size):
@@ -160,8 +167,8 @@ class PrettyPrinter(CharposStream):
         self.space = self.margin - charpos
         self.scanstack = deque()
         self.printstack = list()
-        self.queue = list()
         self.prefix = ""
+        self.queue = list()
         self.level = 0
 
     def write(self, string):
@@ -198,7 +205,6 @@ class PrettyPrinter(CharposStream):
             assert not self.queue, "queue should be empty"
         tok = Begin(*args, **kwargs)
         tok.size = -self.rightotal
-        self.prefix = tok.prefix if tok.per_line else ""
         self.queue.append(tok)
         self.rightotal += len(tok.prefix)
         stack.append(tok)
@@ -207,12 +213,12 @@ class PrettyPrinter(CharposStream):
     def end(self, *args, **kwargs):
         """End the current logical block."""
         assert not self.closed, "I/O operation on closed stream"
-        self.level -= 1
         tok = End(*args, **kwargs)
         stack = self.scanstack
         if not stack:
             tok.output(self)
         else:
+            self.level -= 1
             self.queue.append(tok)
             self.rightotal += len(tok.suffix)
 
@@ -334,9 +340,8 @@ class PrettyPrinter(CharposStream):
 
     def terpri(self):
         assert not self.closed, "I/O operation on closed stream"
-        prefix = self.prefix
-        self.stream.write("\n" + prefix)
-        self.space = self.margin - (len(prefix) if prefix else 0)
+        self.stream.write("\n" + self.prefix)
+        self.space = self.margin - len(self.prefix)
 
     @property
     def charpos(self):
