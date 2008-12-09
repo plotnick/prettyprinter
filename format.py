@@ -579,7 +579,7 @@ class ConditionalNewline(Directive):
         stream.newline(mandatory=(self.colon and self.atsign), fill=self.colon)
 
 class LogicalBlock(DelimitedDirective):
-    # NOTE: Instances of this class are never created directly; the
+    # Note: instances of this class are never created directly; the
     # delimiter method of the Justification class changes the class
     # of instances delimited with "~:>".
 
@@ -588,7 +588,7 @@ class LogicalBlock(DelimitedDirective):
     def delimited(self):
         super(LogicalBlock, self).delimited()
 
-        # NOTE: with the colon modifier, the prefix & suffix default to
+        # Note: with the colon modifier, the prefix & suffix default to
         # square, not round brackets; this is Python, not Lisp.
         self.prefix = "[" if self.colon else ""
         self.suffix = "]" if self.colon else ""
