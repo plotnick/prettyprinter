@@ -580,14 +580,12 @@ class ConditionalNewline(Directive):
     def format(self, stream, args):
         stream.newline(mandatory=(self.colon and self.atsign), fill=self.colon)
 
-blanks = re.compile(r"(\s+)")
-
-def fill_paragraph(body):
+def fill_paragraph(body, blanks=re.compile(r"(\s+)")):
     """Insert a ~:_ after each group of blanks immediately contained in the
     body.  This makes it easy to achieve the equivalent of paragraph filling."""
     for x in body:
         if isinstance(x, basestring):
-            for (i, s) in enumerate(re.split(blanks, x)):
+            for (i, s) in enumerate(blanks.split(x)):
                 if i % 2 == 0:
                     if s: yield s
                 else:
