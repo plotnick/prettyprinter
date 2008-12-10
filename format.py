@@ -53,22 +53,17 @@ class Arguments(object):
     def next(self):
         if self.empty:
             raise StopIteration
-        cur = self.cur
-        arg = self.args[cur]
-        cur += 1
-        self.cur = cur
-        self.empty = (cur == self.len)
+        arg = self.args[self.cur]
+        self.cur += 1
+        self.empty = (self.cur == self.len)
         return arg
 
     def prev(self):
-        cur = self.cur
-        if cur == 0:
+        if self.cur == 0:
             raise StopIteration
-        cur -= 1
-        arg = self.args[cur]
-        self.cur = cur
+        self.cur -= 1
         self.empty = False
-        return arg
+        return self.args[self.cur]
 
     def peek(self, n=0):
         return self.args[self.cur + n]
