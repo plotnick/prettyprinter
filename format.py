@@ -632,7 +632,8 @@ class LogicalBlock(DelimitedDirective):
             try:
                 apply_directives(stream,
                                  self.body,
-                                 args if self.atsign else Arguments(args.next()))
+                                 args if self.atsign \
+                                      else Arguments(args.next()))
             except UpAndOut:
                 pass
 
