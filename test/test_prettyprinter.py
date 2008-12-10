@@ -67,6 +67,15 @@ class PrettyPrinterTest(unittest.TestCase):
 ;;; two lines)""", 25, "~@<;;; ~@;(list ~@<~A ~_~A~:>)~:>",
                        "first", "string on\ntwo lines")
 
+    def testParagraphFilling(self):
+        # Strictly speaking, this should be a format test, since filling
+        # is done via a syntactic transformation on format control strings,
+        # but we needn't be pedantic.
+        self.ppFormatEquals("""\
+Main street
+goes to
+Boston.""", 12, "~<~:(~A~) street goes to ~:(~A~).~:@>", ["main", "boston"])
+
     def testIndentation(self):
         control = "~<(~;~A ~:I~A ~:_~A ~1I~_~A~;)~:>"
         defun = ["defun", "prod", "(x y)", "(* x y)"]

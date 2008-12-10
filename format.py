@@ -5,6 +5,7 @@ from __future__ import with_statement
 import sys
 from cStringIO import StringIO
 from math import log10
+import re
 import unicodedata
 from bindings import bindings
 from charpos import CharposStream
@@ -100,7 +101,8 @@ class Directive(object):
     need_charpos = False
     need_prettyprinter = False
 
-    def __init__(self, params, colon, atsign, control, start, end, parent=None):
+    def __init__(self, params, colon, atsign,
+                 control="", start=0, end=0, parent=None):
         if (colon or atsign) and self.modifiers_allowed is None:
             raise FormatError("neither colon nor at-sign allowed "
                               "for this directive")
@@ -578,6 +580,21 @@ class ConditionalNewline(Directive):
     def format(self, stream, args):
         stream.newline(mandatory=(self.colon and self.atsign), fill=self.colon)
 
+blanks = re.compile(r"(\s+)")
+
+def fill_paragraph(body):
+    """Insert a ~:_ after each group of blanks immediately contained in the
+    body.  This makes it easy to achieve the equivalent of paragraph filling."""
+    for x in body:
+        if isinstance(x, basestring):
+            for (i, s) in enumerate(re.split(blanks, x)):
+                if i % 2 == 0:
+                    if s: yield s
+                else:
+                    yield s
+                    yield ConditionalNewline([], True, False)
+        else: yield x
+
 class LogicalBlock(DelimitedDirective):
     # Note: instances of this class are never created directly; the
     # delimiter method of the Justification class changes the class
@@ -603,6 +620,9 @@ class LogicalBlock(DelimitedDirective):
         else:
             raise FormatError("too many segments for ~~<...~~:>")
         self.per_line = self.separators and self.separators[0].atsign
+
+        if self.delimiter.atsign:
+            self.body = fill_paragraph(self.body)
 
     def format(self, stream, args):
         with stream.logical_block(None,
@@ -666,7 +686,7 @@ class Tabulate(Directive):
                 stream.write("  ")
 
 class EndJustification(Directive):
-    modifiers_allowed = Modifiers.colon
+    modifiers_allowed = Modifiers.all
 
 class Justification(DelimitedDirective):
     modifiers_allowed = Modifiers.all
