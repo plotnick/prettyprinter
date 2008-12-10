@@ -200,55 +200,56 @@ class PrettyPrinter(CharposStream):
                 self.level >= printervars.print_level:
             raise PrintLevelExceeded(self.level)
 
-        stack = self.scanstack
-        if not stack:
+        if not self.scanstack:
             self.leftotal = self.rightotal = 1
             assert not self.queue, "queue should be empty"
         tok = Begin(*args, **kwargs)
         tok.size = -self.rightotal
         self.queue.append(tok)
         self.rightotal += len(tok.prefix)
-        stack.append(tok)
+        self.scanstack.append(tok)
         self.level += 1
 
     def end(self, *args, **kwargs):
         """End the current logical block."""
         assert not self.closed, "I/O operation on closed stream"
         tok = End(*args, **kwargs)
-        stack = self.scanstack
-        if not stack:
+        if not self.scanstack:
             tok.output(self)
         else:
             self.level -= 1
             self.queue.append(tok)
             self.rightotal += len(tok.suffix)
 
-            top = stack.pop()
+            top = self.scanstack.pop()
             top.size += self.rightotal
-            if isinstance(top, Newline) and stack:
-                top = stack.pop()
+            if isinstance(top, Newline) and self.scanstack:
+                top = self.scanstack.pop()
                 top.size += self.rightotal
-            if not stack:
+            if not self.scanstack:
                 self.flush()
 
     def newline(self, fill=False, mandatory=False):
         """Enqueue a conditional newline."""
         assert not self.closed, "I/O operation on closed stream"
-        stack = self.scanstack
-        if not stack:
+        replace = False
+        if not self.scanstack:
             self.leftotal = self.rightotal = 1
             assert not self.queue, "queue should be empty"
         else:
-            top = stack[-1]
+            top = self.scanstack[-1]
             if isinstance(top, Newline):
                 top.size += self.rightotal
-                stack.pop()
+                replace = True
         tok = Mandatory() if mandatory \
                           else Fill() if fill \
                           else Linear()
         tok.size = -self.rightotal
+        if replace:
+            self.scanstack[-1] = tok
+        else:
+            self.scanstack.append(tok)
         self.queue.append(tok)
-        stack.append(tok)
 
     def indent(self, *args, **kwargs):
         """Set the indentation level for the current logical block."""
