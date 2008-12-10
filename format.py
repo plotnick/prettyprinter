@@ -591,7 +591,8 @@ def fill_paragraph(body, blanks=re.compile(r"(\s+)")):
                 else:
                     yield s
                     yield ConditionalNewline([], True, False)
-        else: yield x
+        else:
+            yield x
 
 class LogicalBlock(DelimitedDirective):
     # Note: instances of this class are never created directly; the
