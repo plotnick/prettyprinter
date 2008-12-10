@@ -135,14 +135,13 @@ class LogicalBlock(object):
         return self
 
     def next(self):
-        index = self.index
-        if index == self.len:
+        if self.index == self.len:
             raise StopIteration
-        elif index == printervars.print_length:
+        elif self.index == printervars.print_length:
             self.pp.write("...")
             raise StopIteration
-        value = self.list[index]
-        self.index = index + 1
+        value = self.list[self.index]
+        self.index += 1
         return value
 
     def exit_if_list_exhausted(self):
