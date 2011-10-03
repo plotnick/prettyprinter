@@ -321,8 +321,8 @@ def roman_int(n, oldstyle=False):
         else:
             j += 2; v /= roman_numerals[j - 1]
 
-# English ordinal & cardinal conversion code contributed by Richard
-# M. Kreuter <kreuter@progn.net>.
+# English ordinal & cardinal conversion code contributed by Richard M.
+# Kreuter <kreuter@progn.net>.
 
 cardinals = ["zero", "one", "two" , "three", "four",
              "five", "six", "seven", "eight", "nine",
